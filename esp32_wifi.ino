@@ -3,15 +3,30 @@
 #include <WebServer.h>
 #include <Preferences.h>
 #include "esp_system.h"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
 
 #define LED 2
 #define BOTAO_RESET 0 // Pino do botão de Reset (G4 conectado ao GND)
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define MAX_LINHAS 8
+
+#define PIN_SDA 21
+#define PIN_SCL 22
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 bool blinkAtivo = false;
 bool estadoLed = false;
 
 unsigned long ultimoToggle = 0;
 unsigned long intervaloBlink = 500; // ms
+String historicoLinhas[MAX_LINHAS];
+int totalLinhas = 0;
+bool oledInicializado = false;
 
 WebServer server(80);
 Preferences prefs;
@@ -51,6 +66,35 @@ const char* htmlPage PROGMEM = R"rawliteral(
 WiFiUDP udp;
 const int udpPort = 4210;
 
+// Função para escrever linha por linha dinamicamente com rolagem automática
+void adicionarLinha(String novoTexto) {
+  Serial.println("[OLED] " + novoTexto); // Também espelha no Monitor Serial
+  
+  if (!oledInicializado) return; // Proteção contra ponteiro nulo se o display falhar
+
+  // Move o histórico para cima se a tela estiver cheia
+  if (totalLinhas >= MAX_LINHAS) {
+    for (int i = 0; i < MAX_LINHAS - 1; i++) {
+      historicoLinhas[i] = historicoLinhas[i + 1];
+    }
+    historicoLinhas[MAX_LINHAS - 1] = novoTexto;
+  } else {
+    historicoLinhas[totalLinhas] = novoTexto;
+    totalLinhas++;
+  }
+
+  // Renderiza o histórico atualizado na tela
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
+  for (int i = 0; i < totalLinhas; i++) {
+    display.setCursor(0, i * 8); 
+    display.println(historicoLinhas[i]);
+  }
+  display.display();
+}
+
 void salvarWifi() 
 {
   Serial.println("===== SALVAR WIFI =====");
@@ -76,6 +120,10 @@ void iniciarPortal()
   Serial.print("Conecte-se e acesse o IP: ");
   Serial.println(WiFi.softAPIP());
 
+  adicionarLinha("\nPortal WiFi iniciado");
+  adicionarLinha("Conecte-se e acesse o IP: ");
+  adicionarLinha("IP: 192.168.4.1");
+
   server.on("/", HTTP_GET, []() {
       server.send(200, "text/html", htmlPage);
   });
@@ -95,6 +143,8 @@ bool conectarWifi()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
   Serial.print("Conectando a rede: "); Serial.println(ssid);
+  adicionarLinha("Conectando a:"); adicionarLinha(ssid);
+
 
   int tentativas = 0;
   while (WiFi.status() != WL_CONNECTED && tentativas < 20) 
@@ -111,12 +161,15 @@ bool conectarWifi()
 void zerarConfiguracoes() 
 {
   Serial.println("\n===== APAGANDO CONFIGURAÇÕES DE WI-FI =====");
-  
+  adicionarLinha("Limpando Memoria...");
+
+
   prefs.begin("wifi", false);
   prefs.clear(); // Apaga o SSID e a Senha salvos
   prefs.end();
   
   Serial.println("Memoria limpa com sucesso!");
+  adicionarLinha("Memoria limpa!");
   
   // Resposta final via UDP antes de reiniciar
   udp.beginPacket(udp.remoteIP(), udp.remotePort());
@@ -136,6 +189,8 @@ void executa_comando(String cmd)
 {
   Serial.print("Comando recebido: ");
   Serial.println(cmd);
+  adicionarLinha(cmd);
+
 
   if (cmd == "RESET_WIFI") // Comando de RESET_WIFI
   {
@@ -208,6 +263,8 @@ void executa_comando(String cmd)
   }
   else if (cmd == "CPU") // Informações sobre a CPU
   {
+    //Serial.println(udp.remoteIP());
+    //Serial.println(udp.remotePort());
     udp.beginPacket(udp.remoteIP(), udp.remotePort());
     udp.printf("Modelo: %s\n", ESP.getChipModel());
     udp.printf("Revisao: %d\n", ESP.getChipRevision());
@@ -277,12 +334,24 @@ void setup() {
   Serial.begin(115200);
 
   pinMode(LED, OUTPUT);
-  pinMode(BOTAO_RESET, INPUT_PULLUP); 
+  pinMode(BOTAO_RESET, INPUT_PULLUP);
+
+  // Inicializa o barramento I2C explicitando os pinos do P4
+  Wire.begin(PIN_SDA, PIN_SCL); 
+  if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    oledInicializado = true;
+    display.clearDisplay();
+    display.display();
+    adicionarLinha("OLED Pronto!");
+  } else {
+    Serial.println("Falha ao encontrar o Display OLED nos pinos mapeados!");
+  }  
 
   if (conectarWifi()) 
   {
     Serial.print("\nConectado com sucesso! IP obtido: ");
     Serial.println(WiFi.localIP());
+    adicionarLinha(WiFi.localIP().toString());
     server.stop();
     WiFi.softAPdisconnect(true);
     udp.begin(udpPort);
