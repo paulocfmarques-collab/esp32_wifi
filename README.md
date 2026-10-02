@@ -1,38 +1,50 @@
 # ESP32 Network Provisioning and Remote Device Management Platform
 
-## Overview
+<p align="center">
+  <img src="https://img.shields.io/badge/ESP32-WiFi%20Provisioning-00A3FF?style=for-the-badge&logo=arduino&logoColor=white" alt="ESP32 WiFi Provisioning" />
+  <img src="https://img.shields.io/badge/Architecture-Modular%20IoT-7C3AED?style=for-the-badge" alt="Modular IoT Architecture" />
+  <img src="https://img.shields.io/badge/Protocol-UDP%20Control-10B981?style=for-the-badge" alt="UDP Control" />
+</p>
 
-The ESP32 Network Provisioning and Remote Device Management Platform provides a modular and scalable architecture for network provisioning, remote device administration, hardware monitoring, and embedded application integration.
+A robust and modular platform for securing, configuring, monitoring, and managing ESP32 devices over Wi-Fi and UDP. Built for real-world embedded applications, this project combines seamless network onboarding, remote command execution, system diagnostics, and a clean hardware abstraction layer.
 
-Designed for both production and educational environments, the platform enables secure Wi-Fi provisioning, persistent storage of network credentials, UDP-based communication, system diagnostics, and peripheral management without requiring firmware modifications.
+## Why this project
 
----
+This platform was designed to simplify the operational lifecycle of ESP32-based devices while keeping the architecture extensible and production-friendly.
 
-# Key Capabilities
+It enables:
 
-- Web-based Wi-Fi provisioning
-- Persistent credential storage using NVS (Preferences)
-- Automatic network reconnection
-- UDP communication gateway
-- Remote device management
-- RGB LED control and status indication
-- SD card storage support
-- Real-time system monitoring
-- CPU, memory, and flash diagnostics
-- Network information reporting
-- Device uptime monitoring
-- Remote and local factory reset mechanisms
-- Modular object-oriented software architecture
+- Secure Wi-Fi provisioning without firmware re-flashing
+- Persistent storage of credentials using NVS/Preferences
+- Automatic reconnection and resilient networking
+- Remote command execution through a UDP gateway
+- Structured device diagnostics and health reporting
+- Visual status feedback through RGB LEDs and display integration
+- Modular design for easier maintenance and future expansion
 
 ---
 
-# Software Architecture
+## Key capabilities
 
-The framework is organized into independent modules, each responsible for a specific subsystem. The modular design promotes maintainability, reusability, portability, and straightforward integration into larger IoT solutions.
+- Web-based Wi-Fi provisioning portal
+- Persistent credential storage with NVS
+- Automatic Wi-Fi reconnection flow
+- UDP-based gateway for remote control
+- Device health diagnostics and telemetry
+- CPU, memory, and flash monitoring
+- Network metadata reporting (IP, gateway, RSSI, SSID)
+- Device uptime and reset reason tracking
+- Remote and local factory reset support
+- Modular object-oriented software design
+
+---
+
+## Architecture overview
+
+The system is organized into independent modules, each responsible for a specific subsystem. This separation promotes maintainability, extensibility, and portability across different embedded deployments.
 
 ```mermaid
 flowchart TB
-
     subgraph User
         WEB[Web Browser]
         CLIENT[UDP Client]
@@ -42,9 +54,7 @@ flowchart TB
         PORTAL[Provisioning Portal]
         PREF[NVS Preferences]
         WIFI[WiFi Manager]
-
         GATEWAY[UDP Gateway]
-
         CMD[Command Processor]
         RGB[RGB LED Controller]
         SD[SD Storage Manager]
@@ -67,13 +77,12 @@ flowchart TB
 
 ---
 
-# System Startup Sequence
+## Startup sequence
 
-The platform follows a provisioning-first approach. If no network credentials are available, the device automatically enters provisioning mode.
+The platform follows a provisioning-first device lifecycle. If no valid Wi-Fi credentials are stored, the device automatically enters access point mode and hosts a configuration portal.
 
 ```mermaid
 flowchart TD
-
     A[Device Boot] --> B{Credentials Available?}
 
     B -- No --> C[Start Access Point]
@@ -83,11 +92,9 @@ flowchart TD
     F --> G[Restart Device]
 
     B -- Yes --> H[Connect to WiFi Network]
-
     H --> I{Connection Successful?}
 
     I -- No --> C
-
     I -- Yes --> J[Initialize UDP Gateway]
     J --> K[Initialize Display]
     K --> L[Initialize RGB Controller]
@@ -99,40 +106,33 @@ flowchart TD
 
 ---
 
-# Wi-Fi Provisioning Workflow
+## Wi-Fi provisioning workflow
 
-The provisioning subsystem allows the device to be configured without requiring firmware changes.
+The provisioning subsystem allows a device to be configured without requiring code changes or firmware reprogramming.
 
 ```mermaid
 sequenceDiagram
-
     participant User
     participant AP as ESP32 Access Point
     participant Portal
     participant NVS
 
     User->>AP: Connect to Access Point
-
-    User->>Portal: Open Configuration Interface
-
-    Portal-->>User: Display Provisioning Form
-
-    User->>Portal: Submit SSID and Password
-
-    Portal->>NVS: Store Credentials
-
+    User->>Portal: Open configuration interface
+    Portal-->>User: Render provisioning form
+    User->>Portal: Submit SSID and password
+    Portal->>NVS: Store credentials
     NVS-->>Portal: Confirmation
-
-    Portal->>AP: Restart Device
+    Portal->>AP: Restart device
 ```
 
 ---
 
-# UDP Communication Architecture
+## UDP communication architecture
 
-Once connected to the network, the platform provides a UDP interface for remote management and monitoring.
+Once the device is connected to the network, the platform exposes a UDP-based interface for remote management, status queries, and device automation.
 
-**Default UDP Port**
+Default UDP port:
 
 ```text
 4210
@@ -140,363 +140,169 @@ Once connected to the network, the platform provides a UDP interface for remote 
 
 ```mermaid
 sequenceDiagram
-
     participant Client
     participant Gateway
     participant Device
 
-    Client->>Gateway: Send Command
-
-    Gateway->>Device: Process Request
-
-    Device-->>Gateway: Generate Response
-
-    Gateway-->>Client: Return Result
+    Client->>Gateway: Send command
+    Gateway->>Device: Process request
+    Device-->>Gateway: Generate response
+    Gateway-->>Client: Return result
 ```
 
 ---
 
-# Command Reference
+## Command reference
 
-The platform exposes a UDP-based command interface for remote administration, device diagnostics, monitoring, and hardware control.
+The platform exposes a lightweight UDP command surface for administration, diagnostics, telemetry, and hardware control.
 
-## Available Commands
+### Available commands
 
-| Command | Parameters | Description | Example Response |
-|----------|------------|-------------|------------------|
-| `RESET_WIFI` | None | Clears Wi-Fi configuration and forces reprovisioning. | `Wi-Fi configuration cleared` |
+| Command | Parameters | Description | Example response |
+| --- | --- | --- | --- |
+| `RESET_WIFI` | None | Clears stored Wi-Fi configuration and forces a new provisioning cycle. | `Wi-Fi configuration cleared` |
 | `SET_FUSO:<gmt>` | GMT offset (-12 to +14) | Configures local timezone. | `Fuso alterado: GMT-3` |
-| `DST_ON` | None | Enables daylight saving time (DST). | `Horario de Verao ativado com sucesso!` |
-| `DST_OFF` | None | Disables daylight saving time (DST). | `Horario de Verao desativado com sucesso!` |
-| `TIME` | None | Returns current local time. | `Hora atual: 10:30:25 (GMT-3)` |
-| `DATE` | None | Returns current local date. | `Data atual: 2026-10-02` |
+| `DST_ON` | None | Enables daylight saving time. | `Horario de Verao ativado com sucesso!` |
+| `DST_OFF` | None | Disables daylight saving time. | `Horario de Verao desativado com sucesso!` |
+| `TIME` | None | Returns the current local time. | `Hora atual: 10:30:25 (GMT-3)` |
+| `DATE` | None | Returns the current local date. | `Data atual: 2026-10-02` |
 | `LED_ON` | None | Turns the onboard LED on. | `LED ligado` |
 | `LED_OFF` | None | Turns the onboard LED off. | `LED desligado` |
-| `LED_PISCA:<count>:<delay>` | Blink count and delay in ms | Executes a finite blink sequence. | `LED piscou 10 vezes com 250 ms` |
+| `LED_PISCA:<count>:<delay>` | Blink count and delay in ms | Performs a finite blink sequence. | `LED piscou 10 vezes com 250 ms` |
 | `LED_BLINK:<interval>` | Blink interval in ms | Starts continuous asynchronous blinking. | `Blink iniciado (500 ms)` |
-| `TEMP` | None | Returns internal CPU temperature. | `CPU Temp: 42.5` |
-| `CPU` | None | Returns processor information. | CPU model, frequency, cores and memory |
-| `RAM` | None | Returns memory statistics. | Free heap, minimum heap and largest block |
-| `FLASH` | None | Returns flash memory information. | Flash size and available storage |
+| `TEMP` | None | Returns the internal CPU temperature. | `CPU Temp: 42.5` |
+| `CPU` | None | Returns processor information. | CPU model, frequency, cores, and memory |
+| `RAM` | None | Returns memory statistics. | Free heap, minimum heap, and largest block |
+| `FLASH` | None | Returns flash memory information. | Flash size and free storage |
 | `INIT` | None | Returns the last reset reason. | `Motivo reset: 1` |
 | `UPTIME` | None | Returns device uptime in milliseconds. | `Uptime: 123456 ms` |
 | `MAC` | None | Returns device MAC address. | `MAC: AA:BB:CC:DD:EE:FF` |
-| `NET_INFO` | None | Returns network status information. | IP, Gateway, Subnet, RSSI and SSID |
+| `NET_INFO` | None | Returns network status information. | IP, gateway, subnet, RSSI, and SSID |
 
----
+### Core command categories
 
-# Command Categories
+#### Network management
 
-## Network Management
-
-### RESET_WIFI
-
-Clears all stored Wi-Fi credentials and restarts the provisioning process.
+`RESET_WIFI`
 
 ```text
 RESET_WIFI
 ```
 
----
-
-### SET_FUSO
-
-Configures the device timezone.
+`SET_FUSO`
 
 ```text
 SET_FUSO:-3
 ```
 
-Valid values:
+Supported range:
 
 ```text
 -12 to +14
 ```
 
-Example response:
+#### Date and time
 
-```text
-Fuso alterado: GMT-3
-```
-
----
-
-### DST_ON
-
-Enables daylight saving time.
-
-```text
-DST_ON
-```
-
-Example response:
-
-```text
-Horario de Verao ativado com sucesso!
-```
-
----
-
-### DST_OFF
-
-Disables daylight saving time.
-
-```text
-DST_OFF
-```
-
-Example response:
-
-```text
-Horario de Verao desativado com sucesso!
-```
-
----
-
-## Date and Time
-
-### TIME
-
-Returns current local time according to the configured timezone.
+`TIME`
 
 ```text
 TIME
 ```
 
-Example response:
-
-```text
-Hora atual: 14:53:28 (GMT-3)
-```
-
----
-
-### DATE
-
-Returns current local date.
+`DATE`
 
 ```text
 DATE
 ```
 
-Example response:
+#### LED control
 
-```text
-Data atual: 2026-10-02
-```
-
----
-
-## LED Control
-
-### LED_ON
-
-Turns on the onboard LED.
+`LED_ON`
 
 ```text
 LED_ON
 ```
 
----
-
-### LED_OFF
-
-Turns off the onboard LED.
+`LED_OFF`
 
 ```text
 LED_OFF
 ```
 
----
-
-### LED_BLINK
-
-Starts continuous asynchronous blinking.
+`LED_BLINK:500`
 
 ```text
 LED_BLINK:500
 ```
 
-Parameters:
-
-```text
-500 = interval in milliseconds
-```
-
----
-
-### LED_PISCA
-
-Performs a finite blink sequence.
+`LED_PISCA:10:250`
 
 ```text
 LED_PISCA:10:250
 ```
 
-Parameters:
+#### Hardware monitoring
 
-```text
-10  = blink count
-250 = delay in milliseconds
-```
-
----
-
-## Hardware Monitoring
-
-### TEMP
-
-Returns the internal ESP32 temperature.
+`TEMP`
 
 ```text
 TEMP
 ```
 
-Example response:
-
-```text
-CPU Temp: 42.50
-```
-
----
-
-### CPU
-
-Returns processor information.
+`CPU`
 
 ```text
 CPU
 ```
 
-Example response:
-
-```text
-Model: ESP32-C6
-Revision: 1
-Cores: 1
-CPU: 160 MHz
-RAM Free: 234812 bytes
-```
-
----
-
-### RAM
-
-Returns memory information.
+`RAM`
 
 ```text
 RAM
 ```
 
-Example response:
-
-```text
-Heap Free: 234812
-Min Heap: 220140
-Largest Block: 145320
-```
-
----
-
-### FLASH
-
-Returns flash memory statistics.
+`FLASH`
 
 ```text
 FLASH
 ```
 
-Example response:
-
-```text
-Flash Total: 4194304
-Flash Speed: 80000000
-Sketch Size: 842123
-Free Space: 1234567
-```
-
----
-
-### INIT
-
-Returns the reason for the last system reset.
+`INIT`
 
 ```text
 INIT
 ```
 
-Example response:
-
-```text
-Reset Reason: 1
-```
-
----
-
-### UPTIME
-
-Returns device uptime.
+`UPTIME`
 
 ```text
 UPTIME
 ```
 
-Example response:
+#### Network information
 
-```text
-Uptime: 12548742 ms
-```
-
----
-
-## Network Information
-
-### MAC
-
-Returns device MAC address.
+`MAC`
 
 ```text
 MAC
 ```
 
-Example response:
-
-```text
-MAC: AA:BB:CC:DD:EE:FF
-```
-
----
-
-### NET_INFO
-
-Returns detailed network information.
+`NET_INFO`
 
 ```text
 NET_INFO
 ```
 
-Example response:
-
-```text
-IP: 192.168.1.100
-Gateway: 192.168.1.1
-Mask: 255.255.255.0
-RSSI: -52 dBm
-SSID: OfficeWiFi
-```
-
 ---
 
-# Command Processing Architecture
+## Command processing flow
 
 ```mermaid
 flowchart LR
-
     CLIENT[UDP Client]
         --> GATEWAY[NetworkManager]
 
-    GATEWAY
-        --> HANDLER[CommandHandler]
+    GATEWAY --> HANDLER[CommandHandler]
 
     HANDLER --> WIFI[WiFi Configuration]
     HANDLER --> NTP[NTP Services]
@@ -510,9 +316,10 @@ flowchart LR
 
     RESPONSE --> CLIENT
 ```
+
 ---
 
-# Repository Structure
+## Repository structure
 
 ```text
 src/
@@ -532,23 +339,19 @@ README.md
 
 ---
 
-# Core Components
+## Core components
 
-## WiFiManager
-
-Responsible for wireless network lifecycle management, including:
+### WiFiManager
+Responsible for the wireless lifecycle of the device, including:
 
 - Wi-Fi provisioning
-- Access Point creation
+- Access point creation
 - Connection establishment
 - Automatic reconnection
-- NVS credential persistence
+- Persistent NVS credential storage
 
----
-
-## UDPGateway
-
-Provides a lightweight communication layer for remote command execution and integration with external systems through UDP messaging.
+### UDPGateway
+Provides the communication layer for remote command execution and external system integration through UDP messaging.
 
 Responsibilities include:
 
@@ -557,10 +360,7 @@ Responsibilities include:
 - Client session handling
 - Command routing
 
----
-
-## CommandProcessor
-
+### CommandProcessor
 Implements the command execution subsystem.
 
 Responsibilities include:
@@ -570,11 +370,8 @@ Responsibilities include:
 - Request dispatching
 - Response generation
 
----
-
-## RGBLed
-
-Provides visual status indication and LED management.
+### RGBLed
+Provides status signaling and visual feedback for the device.
 
 Capabilities include:
 
@@ -583,41 +380,32 @@ Capabilities include:
 - Connection status indication
 - Error signaling
 
----
-
-## SDStorageManager
-
-Provides file system abstraction and persistent storage operations.
+### SDStorageManager
+Provides storage abstraction for persistent data operations.
 
 Capabilities include:
 
 - SD card initialization
 - File reading
 - File writing
-- Storage management
+- Storage lifecycle management
 
----
-
-## DisplayManager
-
-Responsible for presenting operational information to the user.
+### DisplayManager
+Responsible for presenting device status information to users.
 
 Capabilities include:
 
 - Device status display
-- Network information display
-- Diagnostic messages
+- Network reporting
+- Diagnostic output
 - User notifications
 
----
-
-## SystemMonitor
-
-Provides operational metrics and diagnostics.
+### SystemMonitor
+Tracks runtime health and operational metrics.
 
 Monitored resources include:
 
-- CPU utilization
+- CPU usage
 - Heap memory
 - Flash memory
 - Device temperature
@@ -627,31 +415,37 @@ Monitored resources include:
 
 ---
 
-# Target Applications
+## Target applications
 
-This platform is suitable for:
+This platform is well suited for:
 
 - Industrial IoT deployments
 - Smart building infrastructure
 - Sensor and telemetry systems
-- Edge computing solutions
+- Edge computing applications
 - Remote monitoring platforms
-- Research and development projects
-- Academic laboratories
+- Research and development environments
+- Academic and laboratory projects
 - Embedded systems education
 
 ---
 
-# Design Principles
+## Design principles
 
-The platform was developed following the principles of modularity, maintainability, extensibility, and hardware abstraction.
+This project follows a design philosophy centered on modularity, maintainability, scalability, and hardware abstraction.
 
-Each subsystem operates independently, reducing coupling and enabling future enhancements with minimal impact on existing components.
-
-The architecture allows additional communication protocols, peripherals, storage backends, and monitoring capabilities to be integrated through well-defined interfaces, supporting long-term scalability and maintainability.
+Each subsystem operates independently, minimizing coupling and making the platform easier to evolve. New communication protocols, peripherals, storage backends, and monitoring capabilities can be added through clearly defined interfaces without disrupting the rest of the system.
 
 ---
 
-# License
+## License
 
 This project is released under the license defined by the repository owner.
+
+---
+
+## Summary
+
+ESP32 Network Provisioning and Remote Device Management Platform is a complete, modular foundation for building resilient Wi-Fi enabled embedded systems. It blends provisioning, remote control, monitoring, and maintainability into a single cohesive architecture designed for both practical deployments and learning scenarios.
+
+If you are building an ESP32 device that needs reliable onboarding, remote diagnostics, and simple management over UDP, this platform offers a strong starting point.
