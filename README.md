@@ -1,467 +1,657 @@
-# ESP32 Wi-Fi Provisioning, Remote Monitoring & UDP Control
-
-A complete ESP32 firmware for Wi-Fi provisioning through a captive web portal, persistence of credentials in NVS/Preferences, remote UDP control, hardware supervision, and device diagnostics.
-
-This project turns an ESP32 into a small smart module capable of:
-
-- creating its own configuration access point when no Wi-Fi is stored
-- saving network credentials in non-volatile memory
-- reconnecting automatically after boot
-- serving a web form for Wi-Fi setup
-- accepting remote UDP commands over port 4210
-- controlling the onboard LED
-- monitoring hardware metrics such as temperature, CPU, memory, uptime, and network data
-- resetting Wi-Fi configuration via hardware button or command
-
----
+# ESP32 Network Provisioning and Remote Device Management Platform
 
 ## Overview
 
-The firmware follows a simple and robust lifecycle:
+The ESP32 Network Provisioning and Remote Device Management Platform provides a modular and scalable architecture for network provisioning, remote device administration, hardware monitoring, and embedded application integration.
 
-1. Boot the ESP32
-2. Check whether valid Wi-Fi credentials are stored in Preferences
-3. If credentials exist, connect to the network automatically
-4. If not, start an access point and serve a configuration page
-5. Once configured, the device enters operational mode and listens for UDP commands
-6. The system can report status, execute actions, and reset its Wi-Fi configuration when needed
+Designed for both production and educational environments, the platform enables secure Wi-Fi provisioning, persistent storage of network credentials, UDP-based communication, system diagnostics, and peripheral management without requiring firmware modifications.
 
 ---
 
-## System Architecture
+# Key Capabilities
+
+- Web-based Wi-Fi provisioning
+- Persistent credential storage using NVS (Preferences)
+- Automatic network reconnection
+- UDP communication gateway
+- Remote device management
+- RGB LED control and status indication
+- SD card storage support
+- Real-time system monitoring
+- CPU, memory, and flash diagnostics
+- Network information reporting
+- Device uptime monitoring
+- Remote and local factory reset mechanisms
+- Modular object-oriented software architecture
+
+---
+
+# Software Architecture
+
+The framework is organized into independent modules, each responsible for a specific subsystem. The modular design promotes maintainability, reusability, portability, and straightforward integration into larger IoT solutions.
 
 ```mermaid
 flowchart TB
+
     subgraph User
-        U1[Web Browser]
-        U2[UDP Client / Remote Controller]
+        WEB[Web Browser]
+        CLIENT[UDP Client]
     end
 
-    subgraph ESP32 Firmware
-        A[Boot and Startup]
-        B{Credentials saved?}
-        C[Wi-Fi Provisioning Portal]
-        D[Preferences / NVS Store]
-        E[Wi-Fi Client Mode]
-        F[UDP Server on Port 4210]
-        G[LED Control]
-        H[System Monitor]
-        I[OLED Display]
+    subgraph ESP32 Platform
+        PORTAL[Provisioning Portal]
+        PREF[NVS Preferences]
+        WIFI[WiFi Manager]
+
+        GATEWAY[UDP Gateway]
+
+        CMD[Command Processor]
+        RGB[RGB LED Controller]
+        SD[SD Storage Manager]
+        DISP[Display Manager]
+        MON[System Monitor]
     end
 
-    U1 --> C
-    C --> D
-    D --> E
-    E --> F
-    U2 --> F
-    F --> G
-    F --> H
-    H --> U2
-    G --> U2
-    A --> B
-    B -->|No| C
-    B -->|Yes| E
-    E --> I
-    C --> I
+    WEB --> PORTAL
+    PORTAL --> PREF
+    PREF --> WIFI
+
+    CLIENT --> GATEWAY
+    GATEWAY --> CMD
+
+    CMD --> RGB
+    CMD --> SD
+    CMD --> DISP
+    CMD --> MON
 ```
 
 ---
 
-## High-Level Data Flow
+# System Startup Sequence
+
+The platform follows a provisioning-first approach. If no network credentials are available, the device automatically enters provisioning mode.
+
+```mermaid
+flowchart TD
+
+    A[Device Boot] --> B{Credentials Available?}
+
+    B -- No --> C[Start Access Point]
+    C --> D[Launch Provisioning Portal]
+    D --> E[Receive Network Configuration]
+    E --> F[Store Credentials]
+    F --> G[Restart Device]
+
+    B -- Yes --> H[Connect to WiFi Network]
+
+    H --> I{Connection Successful?}
+
+    I -- No --> C
+
+    I -- Yes --> J[Initialize UDP Gateway]
+    J --> K[Initialize Display]
+    K --> L[Initialize RGB Controller]
+    L --> M[Initialize SD Storage]
+    M --> N[Initialize Command Processor]
+    N --> O[Initialize Monitoring Services]
+    O --> P[System Ready]
+```
+
+---
+
+# Wi-Fi Provisioning Workflow
+
+The provisioning subsystem allows the device to be configured without requiring firmware changes.
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant User as User / Client
-    participant ESP as ESP32
-    participant NVS as Preferences (NVS)
-    participant WiFi as Wi-Fi Network
 
-    User->>ESP: Power on / Reset
-    ESP->>ESP: Check saved SSID and password
-
-    alt Credentials not found
-        ESP->>User: Start AP: ESP32_CONFIG
-        User->>ESP: Open web portal
-        User->>ESP: Submit SSID and password
-        ESP->>NVS: Save credentials
-        ESP->>ESP: Restart device
-    else Credentials found
-        ESP->>WiFi: Connect to saved SSID
-        WiFi-->>ESP: Connection status
-        ESP->>User: Run UDP listener on port 4210
-    end
-```
-
----
-
-## Hardware Wiring Diagram
-
-The project uses a standard ESP32 development board, an SSD1306 OLED display, a status LED, and a reset button.
-
-```text
-                       +----------------------+
-                       |      ESP32 DevKit    |
-                       |                      |
-        GPIO2  ─────────┤ LED                 |
-                       |
-        GPIO0  ─────────┤ BOOT / RESET BTN    |
-                       |
-        GPIO21 ─────────┤ SDA (OLED)          |
-        GPIO22 ─────────┤ SCL (OLED)          |
-                       |
-                 3V3 ──┤ VCC (OLED)          |
-                 GND ──┤ GND (OLED)          |
-                       +----------------------+
-
-                  +----------------------------+
-                  |  SSD1306 128x64 OLED      |
-                  |  I2C Address: 0x3C        |
-                  +----------------------------+
-```
-
-### Pin Mapping
-
-| Function | ESP32 Pin | Description |
-|---|---:|---|
-| LED | GPIO 2 | Status LED, used for visual feedback |
-| RESET BUTTON | GPIO 0 | Resets Wi-Fi settings when pressed |
-| OLED SDA | GPIO 21 | I2C data line |
-| OLED SCL | GPIO 22 | I2C clock line |
-| OLED VCC | 3V3 | Power |
-| OLED GND | GND | Ground |
-
----
-
-## Power and I/O Behavior
-
-```mermaid
-flowchart LR
-    A[ESP32 Power On] --> B[Initialize serial + I2C]
-    B --> C[Initialize OLED]
-    C --> D{Wi-Fi credentials stored?}
-    D -->|No| E[Access Point mode: ESP32_CONFIG]
-    D -->|Yes| F[Station mode: connect to network]
-    E --> G[Serve configuration page via HTTP 80]
-    F --> H[Listen for UDP commands on port 4210]
-    G --> I[Save SSID + password to NVS]
-    I --> J[Restart device]
-    H --> K[Execute action and return response]
-    K --> H
-```
-
----
-
-## Firmware State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> Boot
-
-    Boot --> Provisioning : No saved Wi-Fi
-    Boot --> Connecting : Wi-Fi exists
-
-    Provisioning --> Restart : Save configuration
-    Restart --> Boot
-
-    Connecting --> Operational : Connected successfully
-    Connecting --> Provisioning : Connection failed
-
-    Operational --> ResetWiFi : GPIO0 pressed
-    Operational --> ResetWiFi : RESET_WIFI command
-    ResetWiFi --> Restart
-```
-
----
-
-## Data Storage Model
-
-The firmware stores network parameters in the ESP32 non-volatile memory via `Preferences`:
-
-```text
-Namespace: wifi
-Keys:
-- ssid
-- senha
-```
-
-This guarantees that the device can reconnect automatically after power cycling without re-entering credentials.
-
----
-
-## Wi-Fi Provisioning Flow
-
-When no saved Wi-Fi information is available, the ESP32 starts an access point named:
-
-```text
-ESP32_CONFIG
-```
-
-Then the user:
-
-1. connects to the access point
-2. opens the web page on the access point IP
-3. enters the SSID and password
-4. submits the form
-5. the ESP32 writes the values to Preferences
-6. the module restarts and connects to the selected Wi-Fi network
-
-### Provisioning Sequence
-
-```mermaid
-sequenceDiagram
-    participant U as User
+    participant User
     participant AP as ESP32 Access Point
-    participant WEB as HTTP Portal
-    participant NVS as NVS / Preferences
+    participant Portal
+    participant NVS
 
-    U->>AP: Connect to ESP32_CONFIG
-    U->>WEB: Open http://192.168.4.1
-    WEB-->>U: Show configuration form
-    U->>WEB: Send SSID + Password
-    WEB->>NVS: Save credentials
-    NVS-->>WEB: Confirmation
-    WEB->>AP: Restart ESP32
-    AP-->>U: Device boots into client mode
+    User->>AP: Connect to Access Point
+
+    User->>Portal: Open Configuration Interface
+
+    Portal-->>User: Display Provisioning Form
+
+    User->>Portal: Submit SSID and Password
+
+    Portal->>NVS: Store Credentials
+
+    NVS-->>Portal: Confirmation
+
+    Portal->>AP: Restart Device
 ```
 
 ---
 
-## UDP Communication
+# UDP Communication Architecture
 
-After a successful Wi-Fi connection, the ESP32 opens a UDP server on port 4210.
+Once connected to the network, the platform provides a UDP interface for remote management and monitoring.
+
+**Default UDP Port**
 
 ```text
-UDP port: 4210
+4210
 ```
 
-The device receives ASCII commands from a client and replies to the sender address and port with a textual response.
-
-### UDP Command Flow
-
 ```mermaid
-flowchart LR
-    A[UDP Client] --> B[ESP32:4210]
-    B --> C{Command received}
-    C --> D[LED_ON]
-    C --> E[LED_OFF]
-    C --> F[LED_PISCA]
-    C --> G[LED_BLINK]
-    C --> H[TEMP]
-    C --> I[CPU]
-    C --> J[RAM]
-    C --> K[FLASH]
-    C --> L[INIT]
-    C --> M[UPTIME]
-    C --> N[MAC]
-    C --> O[NET_INFO]
-    C --> P[RESET_WIFI]
-    D --> Q[Reply to client]
-    E --> Q
-    F --> Q
-    G --> Q
-    H --> Q
-    I --> Q
-    J --> Q
-    K --> Q
-    L --> Q
-    M --> Q
-    N --> Q
-    O --> Q
-    P --> Q
+sequenceDiagram
+
+    participant Client
+    participant Gateway
+    participant Device
+
+    Client->>Gateway: Send Command
+
+    Gateway->>Device: Process Request
+
+    Device-->>Gateway: Generate Response
+
+    Gateway-->>Client: Return Result
 ```
 
 ---
+
+# Command Reference
+
+The platform exposes a UDP-based command interface for remote administration, device diagnostics, monitoring, and hardware control.
 
 ## Available Commands
 
-The firmware supports the following commands through UDP.
-
-| Command | Description | Example |
-|---|---|---|
-| `LED_ON` | Turns the LED ON | `LED_ON` |
-| `LED_OFF` | Turns the LED OFF | `LED_OFF` |
-| `LED_PISCA:10:250` | Blinks N times with delay in milliseconds | `LED_PISCA:10:250` |
-| `LED_BLINK:500` | Continuous blinking with interval in ms | `LED_BLINK:500` |
-| `TEMP` | Reads internal chip temperature | `TEMP` |
-| `CPU` | Returns CPU model, revision, core count, frequency, and free RAM | `CPU` |
-| `RAM` | Returns heap usage and memory statistics | `RAM` |
-| `FLASH` | Returns flash size, speed, sketch size, and free space | `FLASH` |
-| `INIT` | Returns the reason of the last reset | `INIT` |
-| `UPTIME` | Returns device uptime in milliseconds | `UPTIME` |
-| `MAC` | Returns the Wi-Fi MAC address | `MAC` |
-| `NET_INFO` | Returns IP, gateway, subnet, SSID, and RSSI | `NET_INFO` |
-| `RESET_WIFI` | Clears all Wi-Fi settings and restarts into provisioning mode | `RESET_WIFI` |
-
-### Example UDP Response
-
-```text
-Client sends:  LED_ON
-Device reply:  LED ligado
-```
-
-```text
-Client sends:  NET_INFO
-Device reply:
-IP: 192.168.1.25
-Gateway: 192.168.1.1
-Mascara de rede: 255.255.255.0
-RSSI: -45 dbm
-Nome da Rede: MinhaRede
-```
+| Command | Parameters | Description | Example Response |
+|----------|------------|-------------|------------------|
+| `RESET_WIFI` | None | Clears Wi-Fi configuration and forces reprovisioning. | `Wi-Fi configuration cleared` |
+| `SET_FUSO:<gmt>` | GMT offset (-12 to +14) | Configures local timezone. | `Fuso alterado: GMT-3` |
+| `DST_ON` | None | Enables daylight saving time (DST). | `Horario de Verao ativado com sucesso!` |
+| `DST_OFF` | None | Disables daylight saving time (DST). | `Horario de Verao desativado com sucesso!` |
+| `TIME` | None | Returns current local time. | `Hora atual: 10:30:25 (GMT-3)` |
+| `DATE` | None | Returns current local date. | `Data atual: 2026-10-02` |
+| `LED_ON` | None | Turns the onboard LED on. | `LED ligado` |
+| `LED_OFF` | None | Turns the onboard LED off. | `LED desligado` |
+| `LED_PISCA:<count>:<delay>` | Blink count and delay in ms | Executes a finite blink sequence. | `LED piscou 10 vezes com 250 ms` |
+| `LED_BLINK:<interval>` | Blink interval in ms | Starts continuous asynchronous blinking. | `Blink iniciado (500 ms)` |
+| `TEMP` | None | Returns internal CPU temperature. | `CPU Temp: 42.5` |
+| `CPU` | None | Returns processor information. | CPU model, frequency, cores and memory |
+| `RAM` | None | Returns memory statistics. | Free heap, minimum heap and largest block |
+| `FLASH` | None | Returns flash memory information. | Flash size and available storage |
+| `INIT` | None | Returns the last reset reason. | `Motivo reset: 1` |
+| `UPTIME` | None | Returns device uptime in milliseconds. | `Uptime: 123456 ms` |
+| `MAC` | None | Returns device MAC address. | `MAC: AA:BB:CC:DD:EE:FF` |
+| `NET_INFO` | None | Returns network status information. | IP, Gateway, Subnet, RSSI and SSID |
 
 ---
 
-## Reset Behavior
+# Command Categories
 
-The device can erase Wi-Fi configuration in two ways:
+## Network Management
 
-### 1. Hardware reset button
+### RESET_WIFI
 
-When the physical button connected to GPIO 0 is pressed, the firmware:
-
-- clears Preferences memory
-- removes SSID and password
-- flashes the LED as feedback
-- restarts the ESP32
-- returns to AP mode for reconfiguration
-
-### 2. Remote command reset
+Clears all stored Wi-Fi credentials and restarts the provisioning process.
 
 ```text
 RESET_WIFI
 ```
 
-This command triggers the same process, ensuring a quick recovery path if the network settings are lost or invalid.
+---
+
+### SET_FUSO
+
+Configures the device timezone.
+
+```text
+SET_FUSO:-3
+```
+
+Valid values:
+
+```text
+-12 to +14
+```
+
+Example response:
+
+```text
+Fuso alterado: GMT-3
+```
+
+---
+
+### DST_ON
+
+Enables daylight saving time.
+
+```text
+DST_ON
+```
+
+Example response:
+
+```text
+Horario de Verao ativado com sucesso!
+```
+
+---
+
+### DST_OFF
+
+Disables daylight saving time.
+
+```text
+DST_OFF
+```
+
+Example response:
+
+```text
+Horario de Verao desativado com sucesso!
+```
+
+---
+
+## Date and Time
+
+### TIME
+
+Returns current local time according to the configured timezone.
+
+```text
+TIME
+```
+
+Example response:
+
+```text
+Hora atual: 14:53:28 (GMT-3)
+```
+
+---
+
+### DATE
+
+Returns current local date.
+
+```text
+DATE
+```
+
+Example response:
+
+```text
+Data atual: 2026-10-02
+```
+
+---
+
+## LED Control
+
+### LED_ON
+
+Turns on the onboard LED.
+
+```text
+LED_ON
+```
+
+---
+
+### LED_OFF
+
+Turns off the onboard LED.
+
+```text
+LED_OFF
+```
+
+---
+
+### LED_BLINK
+
+Starts continuous asynchronous blinking.
+
+```text
+LED_BLINK:500
+```
+
+Parameters:
+
+```text
+500 = interval in milliseconds
+```
+
+---
+
+### LED_PISCA
+
+Performs a finite blink sequence.
+
+```text
+LED_PISCA:10:250
+```
+
+Parameters:
+
+```text
+10  = blink count
+250 = delay in milliseconds
+```
+
+---
+
+## Hardware Monitoring
+
+### TEMP
+
+Returns the internal ESP32 temperature.
+
+```text
+TEMP
+```
+
+Example response:
+
+```text
+CPU Temp: 42.50
+```
+
+---
+
+### CPU
+
+Returns processor information.
+
+```text
+CPU
+```
+
+Example response:
+
+```text
+Model: ESP32-C6
+Revision: 1
+Cores: 1
+CPU: 160 MHz
+RAM Free: 234812 bytes
+```
+
+---
+
+### RAM
+
+Returns memory information.
+
+```text
+RAM
+```
+
+Example response:
+
+```text
+Heap Free: 234812
+Min Heap: 220140
+Largest Block: 145320
+```
+
+---
+
+### FLASH
+
+Returns flash memory statistics.
+
+```text
+FLASH
+```
+
+Example response:
+
+```text
+Flash Total: 4194304
+Flash Speed: 80000000
+Sketch Size: 842123
+Free Space: 1234567
+```
+
+---
+
+### INIT
+
+Returns the reason for the last system reset.
+
+```text
+INIT
+```
+
+Example response:
+
+```text
+Reset Reason: 1
+```
+
+---
+
+### UPTIME
+
+Returns device uptime.
+
+```text
+UPTIME
+```
+
+Example response:
+
+```text
+Uptime: 12548742 ms
+```
+
+---
+
+## Network Information
+
+### MAC
+
+Returns device MAC address.
+
+```text
+MAC
+```
+
+Example response:
+
+```text
+MAC: AA:BB:CC:DD:EE:FF
+```
+
+---
+
+### NET_INFO
+
+Returns detailed network information.
+
+```text
+NET_INFO
+```
+
+Example response:
+
+```text
+IP: 192.168.1.100
+Gateway: 192.168.1.1
+Mask: 255.255.255.0
+RSSI: -52 dBm
+SSID: OfficeWiFi
+```
+
+---
+
+# Command Processing Architecture
 
 ```mermaid
-flowchart TD
-    A[GPIO0 or RESET_WIFI command] --> B[Clear Preferences]
-    B --> C[Remove SSID]
-    C --> D[Remove password]
-    D --> E[Flash LED]
-    E --> F[Restart ESP32]
-    F --> G[Start ESP32_CONFIG Access Point]
-```
+flowchart LR
 
+    CLIENT[UDP Client]
+        --> GATEWAY[NetworkManager]
+
+    GATEWAY
+        --> HANDLER[CommandHandler]
+
+    HANDLER --> WIFI[WiFi Configuration]
+    HANDLER --> NTP[NTP Services]
+    HANDLER --> LED[Hardware Controller]
+    HANDLER --> MON[System Monitor]
+
+    WIFI --> RESPONSE[UDP Response]
+    NTP --> RESPONSE
+    LED --> RESPONSE
+    MON --> RESPONSE
+
+    RESPONSE --> CLIENT
+```
 ---
 
-## OLED Display Behavior
-
-The SSD1306 display is used as a lightweight diagnostic panel and status output. It logs important events such as:
-
-- system startup
-- Wi-Fi connection attempts
-- current IP address
-- configuration portal activation
-- memory reset events
-- command logging
-
-The display is connected via the I2C bus:
+# Repository Structure
 
 ```text
-SDA = GPIO21
-SCL = GPIO22
-Address = 0x3C
+src/
+├── WiFiManager
+├── UDPGateway
+├── CommandProcessor
+├── RGBLed
+├── SDStorageManager
+├── DisplayManager
+├── SystemMonitor
+└── Utilities
+
+docs/
+data/
+README.md
 ```
 
 ---
 
-## Firmware Structure
+# Core Components
 
-The repository contains the following files:
+## WiFiManager
 
-### Main Application
-- **`wifi.ino`** - Main firmware sketch containing the application entry point and core logic
+Responsible for wireless network lifecycle management, including:
 
-### Header Files (Modular Components)
-- **`Config.h`** - Configuration constants and settings (pins, network parameters, feature toggles)
-- **`CommandHandler.h`** - UDP command parsing and execution logic
-- **`DisplayManager.h`** - OLED display rendering and management
-- **`HardwareController.h`** - LED control, button handling, and GPIO initialization
-- **`NetworkManager.h`** - Wi-Fi connection management and network utilities
-- **`NTPUtil.h`** - Network Time Protocol utilities for time synchronization
-
-### Documentation
-- **`README.md`** - This file; project documentation and usage guide
+- Wi-Fi provisioning
+- Access Point creation
+- Connection establishment
+- Automatic reconnection
+- NVS credential persistence
 
 ---
 
-## Quick Start
+## UDPGateway
 
-### Requirements
+Provides a lightweight communication layer for remote command execution and integration with external systems through UDP messaging.
 
-- ESP32 development board
-- SSD1306 OLED (128x64, I2C)
-- LED on GPIO 2
-- Reset switch connected to GPIO 0
-- Arduino IDE or PlatformIO
-- ESP32 board package installed
+Responsibilities include:
 
-### Build and Upload
-
-1. Open `wifi.ino` in Arduino IDE
-2. Select the correct ESP32 board and COM port
-3. Install the required libraries:
-   - `WiFi.h`
-   - `WiFiUdp.h`
-   - `WebServer.h`
-   - `Preferences.h`
-   - `Adafruit_GFX.h`
-   - `Adafruit_SSD1306.h`
-4. Upload the sketch to the ESP32
-5. Power cycle the device
-
-### First Boot
-
-- If no Wi-Fi has been saved, the ESP32 will start an access point called `ESP32_CONFIG`
-- Connect to it and open the configuration page
-- Enter the Wi-Fi SSID/password and save
+- Packet reception
+- Response transmission
+- Client session handling
+- Command routing
 
 ---
 
-## Operational Notes
+## CommandProcessor
 
-- The module uses NVS/Preferences, which are retained across restarts
-- The AP is created with a default SSID and can be used as a self-contained provisioning mechanism
-- The UDP server allows automation and remote control in local networks
-- The firmware is suitable for home automation, prototyping, remote diagnostics, and device control scenarios
+Implements the command execution subsystem.
 
----
+Responsibilities include:
 
-## Example Use Cases
-
-- remote switching of an onboard LED
-- network monitoring from a local application
-- remote device health checks
-- Wi-Fi reconfiguration without connecting to the UART serial console
-- embedded diagnostic dashboard for ESP32 systems
+- Command parsing
+- Input validation
+- Request dispatching
+- Response generation
 
 ---
 
-## Conclusion
+## RGBLed
 
-This project provides a practical, compact, and professional ESP32 firmware for Wi-Fi commissioning and remote control. It combines a local web-based provisioning interface, automatic reconnectio[...]
+Provides visual status indication and LED management.
 
-It is ideal for embedded engineers, IoT prototyping, and remote monitoring applications that need a stable and manageable communication layer.
+Capabilities include:
+
+- RGB color control
+- Blink effects
+- Connection status indication
+- Error signaling
 
 ---
 
-## License
+## SDStorageManager
 
-This project is distributed as-is for educational, experimental, and prototyping purposes. Please review the repository license before production deployment in commercial environments.
+Provides file system abstraction and persistent storage operations.
+
+Capabilities include:
+
+- SD card initialization
+- File reading
+- File writing
+- Storage management
 
 ---
 
-## Project Summary
+## DisplayManager
 
-```text
-ESP32 Wi-Fi Provisioning + OLED Diagnostics + UDP Control
-- Network provisioning via captive web portal
-- Persistent Wi-Fi credentials with Preferences
-- UDP control interface on port 4210
-- LED and reset handling
-- CPU, temperature, memory, flash, and uptime reports
-- Local SSD1306 diagnostics display
-- Modular architecture with header file components
-```
+Responsible for presenting operational information to the user.
+
+Capabilities include:
+
+- Device status display
+- Network information display
+- Diagnostic messages
+- User notifications
+
+---
+
+## SystemMonitor
+
+Provides operational metrics and diagnostics.
+
+Monitored resources include:
+
+- CPU utilization
+- Heap memory
+- Flash memory
+- Device temperature
+- Network status
+- Uptime statistics
+- Reset diagnostics
+
+---
+
+# Target Applications
+
+This platform is suitable for:
+
+- Industrial IoT deployments
+- Smart building infrastructure
+- Sensor and telemetry systems
+- Edge computing solutions
+- Remote monitoring platforms
+- Research and development projects
+- Academic laboratories
+- Embedded systems education
+
+---
+
+# Design Principles
+
+The platform was developed following the principles of modularity, maintainability, extensibility, and hardware abstraction.
+
+Each subsystem operates independently, reducing coupling and enabling future enhancements with minimal impact on existing components.
+
+The architecture allows additional communication protocols, peripherals, storage backends, and monitoring capabilities to be integrated through well-defined interfaces, supporting long-term scalability and maintainability.
+
+---
+
+# License
+
+This project is released under the license defined by the repository owner.
