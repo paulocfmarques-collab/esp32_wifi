@@ -18,33 +18,60 @@ public:
         if (cmd == "RESET_WIFI") {
             network.forcarReinicializacaoComLimpeza();
         }
-        else if (cmd.startsWith("TIME")) {
+        else if (cmd.startsWith("SET_FUSO")) {
             int p = cmd.indexOf(':');
             if (p > 0) {
                 int novoFuso = cmd.substring(p + 1).toInt();
                 if (novoFuso >= -12 && novoFuso <= 14) {
                     network.salvarFusoHorario(novoFuso);
-                    ntp.atualizarFusoHorario(novoFuso);
+                    bool dstAtual = network.obterDstAtivo();
                     
-                    String confirma = "Fuso: GMT" + String(novoFuso >= 0 ? "+" : "") + String(novoFuso);
+                    // Reconfigura o relógio interno imediatamente com o novo fuso
+                    ntp.configurarRelogio(novoFuso, dstAtual);
+                    
+                    String confirma = "Fuso alterado: GMT" + String(novoFuso >= 0 ? "+" : "") + String(novoFuso);
                     oled.adicionarLinha(confirma);
                     network.responderUDP(confirma + "\n");
                 } else {
                     network.responderUDP("Erro: Fuso invalido (-12 a 14).\n");
                 }
             } else {
-                String dataHoraCompleta;
-                ntp.getDateTime(dataHoraCompleta, 100);
-                String hora = "--:--:--";
-                if (dataHoraCompleta.length() >= 19) {
-                    hora = dataHoraCompleta.substring(11);
-                }
-                int fusoAtual = network.obterFusoHorario();
-                String strFuso = " (GMT" + String(fusoAtual >= 0 ? "+" : "") + String(fusoAtual) + ")";
-                
-                oled.adicionarLinha("Hora: " + hora);
-                network.responderUDP("Hora atual: " + hora + strFuso + "\n");
+                network.responderUDP("Use o padrao: SET_FUSO:X (Ex: SET_FUSO:-3)\n");
             }
+        }
+        else if (cmd == "DST_ON") {
+            network.salvarDstAtivo(true);
+            int fusoAtual = network.obterFusoHorario();
+            
+            // Ativa o Horário de Verão recalculando a string POSIX
+            ntp.configurarRelogio(fusoAtual, true);
+            
+            oled.adicionarLinha("Horario de Verao ON");
+            network.responderUDP("Horario de Verao ativado com sucesso!\n");
+        }
+        else if (cmd == "DST_OFF") {
+            network.salvarDstAtivo(false);
+            int fusoAtual = network.obterFusoHorario();
+            
+            // Retorna ao horário padrão
+            ntp.configurarRelogio(fusoAtual, false);
+            
+            oled.adicionarLinha("Horario de Verao OFF");
+            network.responderUDP("Horario de Verao desativado com sucesso!\n");
+        }
+        else if (cmd == "TIME") {
+            String dataHoraCompleta;
+            ntp.getDateTime(dataHoraCompleta, 100);
+            String hora = "--:--:--";
+            if (dataHoraCompleta.length() >= 19) {
+                hora = dataHoraCompleta.substring(11);
+            }
+            int fusoAtual = network.obterFusoHorario();
+            bool dstAtivo = network.obterDstAtivo();
+            String strFuso = " (GMT" + String(fusoAtual >= 0 ? "+" : "") + String(fusoAtual) + (dstAtivo ? " DST" : "") + ")";
+            
+            oled.adicionarLinha("Hora: " + hora);
+            network.responderUDP("Hora atual: " + hora + strFuso + "\n");
         }
         else if (cmd == "DATE") {
             String dataHoraCompleta;

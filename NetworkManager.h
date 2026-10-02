@@ -84,18 +84,24 @@ public:
         prefs.end();
     }
 
+    bool obterDstAtivo() {
+        prefs.begin("wifi", true);
+        bool dst = prefs.getBool("dst", false);
+        prefs.end();
+        return dst;
+    }
+
+    void salvarDstAtivo(bool ativo) {
+        prefs.begin("wifi", false);
+        prefs.putBool("dst", ativo);
+        prefs.end();
+    }
+
     void iniciarPortal() {
         modoAP = true;
         WiFi.mode(WIFI_AP);
         WiFi.softAP("ESP32_CONFIG");
         
-        Serial.println(F("\nPortal WiFi iniciado"));
-        Serial.print(F("Conecte-se e acesse o IP: "));
-        Serial.println(WiFi.softAPIP());
-
-        oled.adicionarLinha("Portal WiFi iniciado");
-        oled.adicionarLinha("IP: 192.168.4.1");
-
         server.on("/", HTTP_GET, handleRoot);
         server.on("/salvar", HTTP_POST, handleSalvar);
         server.begin();
@@ -155,20 +161,9 @@ public:
     }
 
     void forcarReinicializacaoComLimpeza() {
-        Serial.println(F("\n===== APAGANDO CONFIGURAÇÕES DE WI-FI ====="));
-        oled.adicionarLinha("Limpando Memoria...");
-
         prefs.begin("wifi", false);
         prefs.clear();
         prefs.end();
-        
-        Serial.println(F("Memoria limpa com sucesso!"));
-        oled.adicionarLinha("Memoria limpa!");
-        
-        if (!modoAP) {
-            responderUDP("WiFi zerado. Reiniciando...\n");
-        }
-        
         hardware.piscarSincrono(10, 100);
         ESP.restart();
     }

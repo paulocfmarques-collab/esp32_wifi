@@ -30,9 +30,13 @@ void setup() {
         network.iniciarUDP();
         udpInicializado = true;
 
+        // Recupera os parâmetros da memória e inicializa o NTP completo
         int fusoSalvo = network.obterFusoHorario();
-        ntp.initNTP(fusoSalvo);
-    } else {
+        bool dstSalvo = network.obterDstAtivo();
+        ntp.initNTP(fusoSalvo, dstSalvo);
+    }
+    else 
+    {
         network.iniciarPortal();
     }
 }
