@@ -369,22 +369,21 @@ Address = 0x3C
 
 ## Firmware Structure
 
-The repository contains the following main file:
+The repository contains the following files:
 
-```text
-esp32_wifi.ino
-```
+### Main Application
+- **`wifi.ino`** - Main firmware sketch containing the application entry point and core logic
 
-This file contains:
+### Header Files (Modular Components)
+- **`Config.h`** - Configuration constants and settings (pins, network parameters, feature toggles)
+- **`CommandHandler.h`** - UDP command parsing and execution logic
+- **`DisplayManager.h`** - OLED display rendering and management
+- **`HardwareController.h`** - LED control, button handling, and GPIO initialization
+- **`NetworkManager.h`** - Wi-Fi connection management and network utilities
+- **`NTPUtil.h`** - Network Time Protocol utilities for time synchronization
 
-- Wi-Fi access point setup
-- configuration page generation
-- Preferences persistence
-- UDP server implementation
-- LED control logic
-- network diagnostics
-- OLED display rendering
-- device reset logic
+### Documentation
+- **`README.md`** - This file; project documentation and usage guide
 
 ---
 
@@ -401,7 +400,7 @@ This file contains:
 
 ### Build and Upload
 
-1. Open `esp32_wifi.ino` in Arduino IDE
+1. Open `wifi.ino` in Arduino IDE
 2. Select the correct ESP32 board and COM port
 3. Install the required libraries:
    - `WiFi.h`
@@ -442,7 +441,7 @@ This file contains:
 
 ## Conclusion
 
-This project provides a practical, compact, and professional ESP32 firmware for Wi-Fi commissioning and remote control. It combines a local web-based provisioning interface, automatic reconnection, persistent storage, UDP command processing, and real-time hardware diagnostics in a single compact solution.
+This project provides a practical, compact, and professional ESP32 firmware for Wi-Fi commissioning and remote control. It combines a local web-based provisioning interface, automatic reconnection, persistent credential storage, and a UDP-based control protocol with comprehensive diagnostics.
 
 It is ideal for embedded engineers, IoT prototyping, and remote monitoring applications that need a stable and manageable communication layer.
 
@@ -464,4 +463,5 @@ ESP32 Wi-Fi Provisioning + OLED Diagnostics + UDP Control
 - LED and reset handling
 - CPU, temperature, memory, flash, and uptime reports
 - Local SSD1306 diagnostics display
+- Modular architecture with header file components
 ```
