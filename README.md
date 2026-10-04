@@ -1,4 +1,4 @@
-# 🌐 ESP32 Network Provisioning & Remote Device Management
+# 🌐 ESP32 Wi‑Fi Provisioning & Remote Device Management
 
 <div align="center">
 
@@ -8,62 +8,67 @@
 ![Language](https://img.shields.io/badge/Language-C%2B%2B-blue?style=for-the-badge&logo=c%2B%2B)
 ![License](https://img.shields.io/badge/License-Not%20Declared-red?style=for-the-badge)
 
-**A production-grade platform for securing, configuring, monitoring, and managing ESP32 devices over Wi-Fi and UDP**
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Commands](#-command-reference) • [Contributing](#-contributing)
+**Plataforma modular para provisionamento Wi‑Fi, monitoramento e controle remoto de dispositivos ESP32 via rede local.**
 
 </div>
 
 ---
 
-## 🎯 What is This?
+## 🎯 Visão geral
 
-A robust, modular, and extensible platform designed to simplify the entire operational lifecycle of ESP32-based IoT devices. Built for real-world embedded applications, this project combines seamless wireless provisioning, persistent storage, remote management, and comprehensive system diagnostics.
+Este projeto foi pensado para simplificar o ciclo de vida operacional de dispositivos ESP32 em rede local. Ele combina:
 
-**Perfect for:** Industrial IoT, Smart Buildings, Sensor Networks, Edge Computing, and Research Projects
+- provisionamento Wi‑Fi via portal local
+- armazenamento persistente de credenciais
+- sincronização NTP
+- monitoramento de hardware
+- controle remoto via UDP
+- gerenciamento de LED, display e diagnósticos
+
+É um projeto modular, com responsabilidades separadas por arquivos e componentes, permitindo evoluir com facilidade e manter manutenção simples.
 
 ---
 
-## ✨ Key Features
+## ✨ Funcionalidades principais
 
 <table>
   <tr>
     <td width="50%">
-      <h3>🔐 Security & Configuration</h3>
+      <h3>🔐 Provisionamento e segurança</h3>
       <ul>
-        <li>Secure Wi-Fi provisioning without firmware re-flashing</li>
-        <li>Persistent credential storage using NVS</li>
-        <li>Automatic reconnection & resilient networking</li>
-        <li>Local & remote factory reset support</li>
+        <li>Portal de configuração em modo AP</li>
+        <li>Armazenamento persistente de SSID/senha em Preferences</li>
+        <li>Reconexão automática e reset de credenciais</li>
+        <li>Modo de recuperação via reset Wi‑Fi</li>
       </ul>
     </td>
     <td width="50%">
-      <h3>📡 Remote Management</h3>
+      <h3>📡 Controle remoto</h3>
       <ul>
-        <li>UDP-based gateway for remote control</li>
-        <li>Real-time command execution</li>
-        <li>Structured device diagnostics</li>
-        <li>Health reporting & telemetry</li>
+        <li>Gateway UDP na porta 4210</li>
+        <li>Comandos textuais simples</li>
+        <li>Resposta direta para cliente remoto</li>
+        <li>Diagnóstico e monitoramento via rede</li>
       </ul>
     </td>
   </tr>
   <tr>
-    <td>
-      <h3>🎛️ Hardware Integration</h3>
+    <td width="50%">
+      <h3>🎛️ Integração com hardware</h3>
       <ul>
-        <li>RGB LED status feedback</li>
-        <li>Display integration</li>
-        <li>SD storage management</li>
-        <li>Multi-sensor support</li>
+        <li>Controle de LED</li>
+        <li>Atualização de display</li>
+        <li>Suporte de monitoramento do sistema</li>
+        <li>Gerenciamento de reset e estado do dispositivo</li>
       </ul>
     </td>
-    <td>
-      <h3>📊 Monitoring & Analytics</h3>
+    <td width="50%">
+      <h3>📊 Monitoramento</h3>
       <ul>
-        <li>CPU & memory tracking</li>
-        <li>Flash storage monitoring</li>
-        <li>Network metadata reporting</li>
-        <li>Device uptime & reset diagnostics</li>
+        <li>Temperatura da CPU</li>
+        <li>Heap e RAM livres</li>
+        <li>Flash e PSRAM</li>
+        <li>Uptime, NTP e motivo do último reset</li>
       </ul>
     </td>
   </tr>
@@ -71,467 +76,336 @@ A robust, modular, and extensible platform designed to simplify the entire opera
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Guia rápido
 
-### Prerequisites
-- ESP32 development board
-- PlatformIO or Arduino IDE
-- USB cable for flashing
+### Pré-requisitos
 
-### Installation
+- ESP32
+- Arduino IDE ou PlatformIO
+- Cabo USB para gravação
+- Rede Wi‑Fi local
 
-1. **Clone the repository**
+### 1) Clone o repositório
+
 ```bash
 git clone https://github.com/paulocfmarques-collab/esp32_wifi.git
 cd esp32_wifi
 ```
 
-2. **Configure your environment**
-```bash
-# Edit configuration as needed
-cp include/config.example.h include/config.h
+### 2) Configure o projeto
+
+O projeto usa arquivos de configuração em nível de código, como:
+
+```cpp
+#include "Config.h"
 ```
 
-3. **Flash to ESP32**
+Edite `Config.h` conforme a sua aplicação e a pinagem do hardware.
+
+### 3) Faça o upload para o ESP32
+
+No Arduino IDE:
+
+- abra `wifi.ino`
+- selecione a placa ESP32 correta
+- escolha a porta serial
+- faça upload
+
+Ou com PlatformIO:
+
 ```bash
-# Using PlatformIO
 pio run -t upload
-
-# Or using Arduino IDE
-# Open sketch and upload to your board
 ```
 
-4. **Access provisioning portal**
-   - Device enters AP mode on first boot
-   - Connect to `ESP32-Setup` WiFi network
-   - Open browser to `http://192.168.4.1`
-   - Configure your network credentials
+### 4) Primeiro acesso
+
+Ao iniciar sem credenciais salvas, o dispositivo entra em modo AP e abre um portal local.
+
+- SSID do AP: `ESP32_CONFIG`
+- Portal: `http://192.168.4.1`
+- Informe SSID e senha da rede Wi‑Fi
+- Salve e reinicie o dispositivo
 
 ---
 
-## 🏗️ Architecture Overview
-
-### System Design
+## 🏗️ Arquitetura do sistema
 
 ```mermaid
 flowchart TB
-    subgraph Input["👤 User Interface"]
-        WEB["🌐 Web Browser"]
-        CLIENT["📱 UDP Client"]
+    subgraph Entrada[Usuário]
+        WEB[🌐 Navegador]
+        CLIENT[📱 Cliente UDP]
     end
 
-    subgraph Core["⚙️ ESP32 Platform"]
-        PORTAL["🔧 Provisioning Portal"]
-        PREF["💾 NVS Preferences"]
-        WIFI["📡 WiFi Manager"]
-        GATEWAY["🚪 UDP Gateway"]
-        CMD["⚡ Command Processor"]
-        RGB["🎨 RGB LED Controller"]
-        SD["📦 SD Storage Manager"]
-        DISP["📺 Display Manager"]
-        MON["📊 System Monitor"]
+    subgraph Core[ESP32]
+        PORTAL[🔧 Portal de Configuração]
+        PREF[💾 Preferences]
+        WIFI[📡 WiFi]
+        NET[🚪 NetworkManager]
+        CMD[⚡ CommandHandler]
+        LED[🎨 HardwareController]
+        DISP[📺 DisplayManager]
+        NTP[🕐 NTPUtil]
+        MON[📊 Diagnósticos]
     end
 
-    Input -->|Configure| PORTAL
+    WEB --> PORTAL
     PORTAL --> PREF
     PREF --> WIFI
-    
-    Input -->|Control| GATEWAY
-    GATEWAY --> CMD
-    
-    CMD -->|Activate| RGB
-    CMD -->|Write| SD
-    CMD -->|Display| DISP
-    CMD -->|Track| MON
+    CLIENT --> NET
+    NET --> CMD
+    CMD --> LED
+    CMD --> DISP
+    CMD --> NTP
+    CMD --> MON
 ```
 
-### Device Lifecycle
+### Fluxo de boot
 
 ```mermaid
 flowchart TD
-    A["🔌 Device Boot"] --> B{🔐 Credentials Available?}
-
-    B -->|No| C["📡 Start Access Point"]
-    C --> D["🌐 Launch Provisioning Portal"]
-    D --> E["⚙️ Receive Network Config"]
-    E --> F["💾 Store Credentials"]
-    F --> G["🔄 Restart Device"]
-
-    B -->|Yes| H["🔗 Connect to WiFi"]
-    H --> I{✅ Connection OK?}
-    
-    I -->|No| C
-    I -->|Yes| J["🚪 Initialize UDP Gateway"]
-    J --> K["📺 Initialize Display"]
-    K --> L["🎨 Initialize RGB Controller"]
-    L --> M["📦 Initialize SD Storage"]
-    M --> N["⚡ Initialize Command Processor"]
-    N --> O["📊 Initialize Monitoring"]
-    O --> P["✨ System Ready"]
+    A[🔌 Inicialização] --> B{Credenciais salvas?}
+    B -->|Não| C[📡 Ativa AP]
+    C --> D[🌐 Abre portal]
+    D --> E[💾 Salva SSID/senha]
+    E --> F[🔄 Reinicia]
+    B -->|Sim| G[🔗 Conecta ao Wi‑Fi]
+    G --> H{Conexão OK?}
+    H -->|Não| C
+    H -->|Sim| I[🚪 Inicializa UDP]
+    I --> J[📺 Inicializa display]
+    J --> K[🎨 Inicializa LED]
+    K --> L[🕐 Inicializa NTP]
+    L --> M[⚡ Sistema pronto]
 ```
 
-### Wi-Fi Provisioning Flow
+---
+
+## 📡 Protocolo de comunicação
+
+- Porta UDP padrão: `4210`
+- Payload: texto simples
+- Resposta: texto estruturado em retorno UDP
+- Cliente pode enviar comandos diretamente para o ESP32 conectado na LAN
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant AP as ESP32 Access Point
-    participant Portal as Config Portal
-    participant NVS as Credential Storage
+    participant Cliente as 📱 Cliente UDP
+    participant ESP as 🚪 DeviceNetwork
+    participant Handler as ⚡ CommandHandler
 
-    User->>AP: 📡 Connect to Access Point
-    User->>Portal: 🌐 Open config interface
-    Portal-->>User: 📋 Render form
-    User->>Portal: ✍️ Submit SSID & password
-    Portal->>NVS: 💾 Store securely
-    NVS-->>Portal: ✅ Confirmation
-    Portal->>AP: 🔄 Restart device
+    Cliente->>ESP: Envia comando
+    ESP->>Handler: Processa mensagem
+    Handler-->>ESP: Gera resposta
+    ESP-->>Cliente: Retorna resultado
 ```
 
 ---
 
-## 📡 Communication Protocol
+## 🎮 Lista de comandos implementados
 
-### UDP Gateway
-- **Default Port:** `4210`
-- **Protocol:** UDP (connectionless)
-- **Payload:** Plain text commands
-- **Response:** Structured text feedback
+A lista abaixo reflete os comandos efetivamente presentes no projeto atual, conforme `CommandHandler.h` e `wifi.ino`.
 
-```mermaid
-sequenceDiagram
-    participant Client as 📱 Client
-    participant Gateway as 🚪 Gateway
-    participant Device as 🎯 Device
+### 🔹 Comandos gerais e diagnósticos
 
-    Client->>Gateway: 📤 Send command
-    Gateway->>Device: ⚙️ Process request
-    Device-->>Gateway: 📊 Generate response
-    Gateway-->>Client: 📥 Return result
+| Comando | Sintaxe | Descrição |
+| :--- | :--- | :--- |
+| `help` | `help` | Lista os comandos disponíveis |
+| `info` | `info` | Exibe status completo do dispositivo |
+| `status` | `status` | Resumo rápido de rede, heap e NTP |
+| `reason` | `reason` | Mostra o motivo do último reset |
+| `version` | `version` | Retorna a versão do firmware |
+| `build` | `build` | Exibe data e hora da compilação |
+| `cpu` | `cpu` | Modelo, revisão, núcleos e frequência |
+| `ram` | `ram` | Heap total, livre, menor e maior bloco |
+| `flash` | `flash` | Informações da flash e espaço livre |
+| `temp` | `temp` | Temperatura interna da CPU |
+| `mac` | `mac` | Endereço MAC do Wi‑Fi |
+| `net_info` | `net_info` | SSID, IP, gateway, subnet, DNS e RSSI |
+| `uptime` | `uptime` | Tempo de atividade em segundos |
+| `time` | `time` | Hora atual via NTP |
+| `date` | `date` | Data atual via NTP |
+| `reset` | `reset` | Reinicia o ESP32 |
+| `alive` | `alive` | Verificação de presença / resposta ping |
+| `psram` | `psram` | Estado e uso da PSRAM, quando disponível |
+
+### 🔧 Comandos de configuração
+
+| Comando | Sintaxe | Descrição |
+| :--- | :--- | :--- |
+| `set_fuso` | `set_fuso:-3` | Ajusta o timezone usado pelo NTP |
+| `reset_wifi` | `reset_wifi` | Limpa credenciais e reinicia para configurar novamente |
+| `dst_on` | `dst_on` | Ativa horário de verão |
+| `dst_off` | `dst_off` | Desativa horário de verão |
+
+### 💡 Comandos de LED
+
+| Comando | Sintaxe | Descrição |
+| :--- | :--- | :--- |
+| `led_on` | `led_on` | Liga o LED |
+| `led_off` | `led_off` | Desliga o LED |
+| `led_pisca` | `led_pisca:10:250` | Pisca N vezes com intervalo em ms |
+| `led_blink` | `led_blink:500` | Liga o blink assíncrono com intervalo em ms |
+
+### Exemplo de uso
+
+```text
+help
+info
+status
+net_info
+TIME
+LED_ON
+LED_BLINK:500
+RESET_WIFI
+SET_FUSO:-3
 ```
 
 ---
 
-## 🎮 Command Reference
+## 📁 Estrutura real do repositório
 
-### Network Management
+A estrutura atual do projeto é a seguinte:
 
-| Command | Parameters | Description | Example |
-|---------|-----------|-------------|---------|
-| `RESET_WIFI` | None | Clear Wi-Fi config & re-provision | `RESET_WIFI` |
-| `SET_FUSO:<gmt>` | GMT (-12 to +14) | Configure timezone | `SET_FUSO:-3` |
-| `NET_INFO` | None | Get network status | `NET_INFO` |
-| `MAC` | None | Get device MAC address | `MAC` |
-
-### Date & Time
-
-| Command | Parameters | Description | Example |
-|---------|-----------|-------------|---------|
-| `TIME` | None | Current local time | `TIME` |
-| `DATE` | None | Current local date | `DATE` |
-| `DST_ON` | None | Enable daylight saving | `DST_ON` |
-| `DST_OFF` | None | Disable daylight saving | `DST_OFF` |
-
-### LED Control
-
-| Command | Parameters | Description | Example |
-|---------|-----------|-------------|---------|
-| `LED_ON` | None | Turn LED on | `LED_ON` |
-| `LED_OFF` | None | Turn LED off | `LED_OFF` |
-| `LED_BLINK:<ms>` | Interval (ms) | Continuous blink | `LED_BLINK:500` |
-| `LED_PISCA:<count>:<ms>` | Count, Interval (ms) | Finite blink sequence | `LED_PISCA:10:250` |
-
-### Hardware Monitoring
-
-| Command | Parameters | Description | Response |
-|---------|-----------|-------------|----------|
-| `TEMP` | None | CPU temperature | `CPU Temp: 42.5°C` |
-| `CPU` | None | Processor info | Model, frequency, cores, memory |
-| `RAM` | None | Memory statistics | Free heap, min heap, largest block |
-| `FLASH` | None | Flash memory info | Total size, free storage |
-| `UPTIME` | None | Device uptime | Milliseconds since boot |
-| `INIT` | None | Last reset reason | Reset code & description |
-
-### Command Execution Flow
-
-```mermaid
-flowchart LR
-    CLIENT["📱 UDP Client"]
-    --> GATEWAY["🚪 NetworkManager"]
-    --> HANDLER["⚡ CommandHandler"]
-
-    HANDLER --> WIFI["📡 WiFi Subsystem"]
-    HANDLER --> NTP["🕐 Time Services"]
-    HANDLER --> LED["💡 Hardware Controller"]
-    HANDLER --> MON["📊 System Monitor"]
-
-    WIFI --> RESPONSE["📤 UDP Response"]
-    NTP --> RESPONSE
-    LED --> RESPONSE
-    MON --> RESPONSE
-
-    RESPONSE --> CLIENT
-```
-
----
-
-## 📁 Repository Structure
-
-```
+```text
 esp32_wifi/
-│
-├── src/
-│   ├── WiFiManager/           # Wireless lifecycle management
-│   │   ├── WiFiManager.cpp
-│   │   └── WiFiManager.h
-│   ├── UDPGateway/           # UDP communication layer
-│   │   ├── UDPGateway.cpp
-│   │   └── UDPGateway.h
-│   ├── CommandProcessor/     # Command execution engine
-│   │   ├── CommandProcessor.cpp
-│   │   └── CommandProcessor.h
-│   ├── RGBLed/               # LED control subsystem
-│   ├── SDStorageManager/     # SD card abstraction
-│   ├── DisplayManager/       # Display integration
-│   ├── SystemMonitor/        # Runtime metrics
-│   └── Utilities/            # Common utilities
-│
-├── include/
-│   ├── config.h              # Configuration constants
-│   └── config.example.h      # Configuration template
-│
-├── docs/                      # Documentation & guides
-├── data/                      # Static assets & web files
-├── platformio.ini            # PlatformIO configuration
-├── README.md                 # This file
-└── LICENSE                   # License information
+├── CHANGELOG.md
+├── CommandHandler.h
+├── Config.h
+├── DisplayManager.h
+├── HardwareController.h
+├── NTPUtil.h
+├── NetworkManager.h
+├── README.md
+├── wifi.ino
+└── LICENSE (se presente no fork/clone)
 ```
 
----
-
-## 🔧 Core Components
-
-### 📡 WiFiManager
-Manages the complete wireless lifecycle of the device.
-
-**Responsibilities:**
-- Wi-Fi provisioning through web portal
-- Access point creation & management
-- Network connection establishment
-- Automatic reconnection logic
-- Persistent credential storage (NVS)
-- Connection state monitoring
-
-### 🚪 UDPGateway
-Provides the communication layer for remote command execution.
-
-**Responsibilities:**
-- UDP packet reception & transmission
-- Client session handling
-- Message queuing & delivery
-- Command routing & dispatching
-- Response generation & error handling
-
-### ⚡ CommandProcessor
-Implements the command execution subsystem.
-
-**Responsibilities:**
-- Command parsing & tokenization
-- Input validation & sanitization
-- Request dispatching to subsystems
-- Response formatting & transmission
-- Error handling & logging
-
-### 🎨 RGBLed
-Provides visual status signaling and feedback.
-
-**Capabilities:**
-- Full RGB color control
-- Blink & pulse effects
-- Connection status indication
-- Error & warning signaling
-- Custom animation sequences
-
-### 📦 SDStorageManager
-Abstracts SD card operations for persistent storage.
-
-**Capabilities:**
-- SD card initialization & mounting
-- File reading & writing
-- Directory management
-- Storage lifecycle management
-- Error recovery
-
-### 📺 DisplayManager
-Presents device status and diagnostics to users.
-
-**Capabilities:**
-- Real-time device status display
-- Network information reporting
-- Diagnostic data visualization
-- User notifications & alerts
-- Multi-line text formatting
-
-### 📊 SystemMonitor
-Tracks runtime health and operational metrics.
-
-**Monitored Metrics:**
-- CPU usage & temperature
-- Heap memory (free, minimum, largest block)
-- Flash memory utilization
-- Network connectivity status
-- Device uptime & boot count
-- Last reset reason & diagnostics
+> O README anterior descrevia uma estrutura baseada em `src/`, `include/`, `docs/` e `data/`, mas a árvore real do repositório atual é a listada acima.
 
 ---
 
-## 🎓 Use Cases
+## 🔧 Componentes principais
 
-This platform excels in:
+### `NetworkManager.h`
 
-- **🏭 Industrial IoT** - Sensor networks, machine monitoring
-- **🏢 Smart Buildings** - HVAC control, occupancy detection
-- **📊 Data Collection** - Environmental monitoring, telemetry
-- **🔬 Research** - Academic projects, prototyping
-- **📡 Edge Computing** - Local processing, distributed systems
-- **🎓 Education** - Embedded systems learning, IoT courses
+Responsável por:
 
----
+- conexão Wi‑Fi
+- criação e controle do portal AP
+- armazenamento de credenciais em `Preferences`
+- inicialização do socket UDP
+- envio de respostas para o cliente remoto
+- validação e processamento de mensagens UDP
 
-## 🎨 Design Principles
+### `CommandHandler.h`
 
-This project follows a philosophy of:
+Responsável por:
 
-- **🔲 Modularity** - Independent subsystems, minimal coupling
-- **📚 Maintainability** - Clean code, extensive documentation
-- **📈 Scalability** - Easy to extend with new features
-- **🔌 Abstraction** - Hardware-agnostic interfaces
-- **🛡️ Reliability** - Error handling & graceful degradation
-- **⚡ Efficiency** - Optimized for embedded constraints
+- parser dos comandos recebidos
+- execução de diagnósticos locais
+- manipulação de tempo, reset, rede e hardware
+- respostas em texto para o cliente UDP
+- controle de LED, NTP, memória e processamento
 
-Each subsystem operates independently, making the platform easy to evolve. New protocols, peripherals, storage backends, and monitoring capabilities can be added without disrupting existing code.
+### `DisplayManager.h`
 
----
+Responsável por:
 
-## 📋 Configuration Guide
+- renderização visual do estado do dispositivo
+- apresentação de mensagens e diagnósticos
+- feedback visual para uso local
 
-### Basic Configuration
+### `HardwareController.h`
 
-Edit `include/config.h` to customize:
+Responsável por:
 
-```cpp
-// WiFi Configuration
-#define WIFI_SSID_MAX_LEN 32
-#define WIFI_PASS_MAX_LEN 64
+- controle do LED físico
+- sincronização de blink
+- leitura de temperatura
+- gestão básica de estados do hardware
 
-// UDP Configuration
-#define UDP_PORT 4210
-#define UDP_BUFFER_SIZE 1024
+### `NTPUtil.h`
 
-// LED Configuration
-#define LED_PIN_RED 25
-#define LED_PIN_GREEN 26
-#define LED_PIN_BLUE 27
+Responsável por:
 
-// System Configuration
-#define DEVICE_NAME "ESP32-Device"
-#define TIMEZONE_OFFSET -3
-```
+- sincronização temporal via NTP
+- cálculo de fuso horário
+- suporte a horário de verão
+- atualização de data/hora para comandos `time` e `date`
 
----
+### `Config.h`
 
-## 📈 Performance Metrics
+Arquivo central com constantes e parâmetros do projeto, como:
 
-| Metric | Value |
-|--------|-------|
-| Boot Time | < 5s (with WiFi) |
-| UDP Response Latency | < 100ms |
-| Memory Footprint | ~150KB (program) |
-| WiFi Reconnection | < 10s |
-| Command Processing | < 50ms |
+- porta UDP
+- nome da rede AP
+- fuso padrão
+- parâmetros globais do sistema
 
 ---
 
-## 🤝 Contributing
+## 🧪 Troubleshooting
 
-Contributions are welcome! Here's how you can help:
+### Wi‑Fi não conecta
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+- Verifique se as credenciais estão corretas
+- Delete as informações salvas usando `reset_wifi`
+- Confirme que a rede é 2.4 GHz e está acessível
 
-### Development Setup
+### Socket UDP não responde
 
-```bash
-# Clone your fork
-git clone https://github.com/YOUR_USERNAME/esp32_wifi.git
-cd esp32_wifi
+- Confirme se o ESP32 está conectado à rede local
+- Verifique se a porta `4210` está liberada
+- Teste o comando `alive`
+- Confirme o IP do dispositivo com `net_info`
 
-# Install dependencies
-pio pkg install
+### NTP não sincroniza
 
-# Run tests
-pio test
+- Verifique conexão com a internet
+- Ajuste o fuso com `set_fuso:-3`
+- Teste `dst_on` e `dst_off` se o comportamento exigir
 
-# Format code
-clang-format -i src/**/*.cpp
-```
+### LED não responde
 
----
-
-## 🐛 Troubleshooting
-
-### Device not entering provisioning mode
-- Ensure NVS partition is properly formatted
-- Check `RESET_WIFI` command was sent successfully
-- Verify board has adequate power supply
-
-### WiFi connection drops
-- Check signal strength (RSSI)
-- Verify credentials are stored correctly
-- Check for interference on 2.4GHz band
-- Update router firmware
-
-### UDP commands not responding
-- Verify device is connected to network
-- Check firewall allows UDP on port 4210
-- Confirm device IP address with `NET_INFO` command
-- Check UDP buffer size configuration
+- Verifique a pinagem do hardware
+- Teste `led_on`, `led_off` e `led_blink`
+- Confirme que o sistema está com o controlador em execução
 
 ---
 
-## 📚 Documentation
+## 📝 Changelog
 
-- [Architecture Overview](#-architecture-overview)
-- [Command Reference](#-command-reference)
-- [Quick Start](#-quick-start)
-- [Troubleshooting](#-troubleshooting)
-- [Repository Files](https://github.com/paulocfmarques-collab/esp32_wifi)
+O histórico de mudanças está em [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
-## 📄 License
+## 🤝 Contribuição
 
-This repository does not currently declare a license file. If you want to publish it openly, add a license such as MIT, Apache 2.0, or GPL.
+Contribuições são bem-vindas.
+
+1. Faça um fork do projeto
+2. Crie uma branch para a feature
+3. Faça o commit das alterações
+4. Abra um Pull Request
 
 ---
 
-## 📞 Support & Contact
+## 📄 Licença
 
-- **Issues & Bugs:** [GitHub Issues](https://github.com/paulocfmarques-collab/esp32_wifi/issues)
-- **Repository Files:** [Code & Modules](https://github.com/paulocfmarques-collab/esp32_wifi)
-- **Pull Requests:** [Open PRs](https://github.com/paulocfmarques-collab/esp32_wifi/pulls)
+Este repositório ainda não declara uma licença explícita no arquivo principal. Caso queira publicar publicamente, recomenda-se adicionar uma licença como MIT, Apache 2.0 ou GPL.
+
+---
+
+## 📞 Suporte
+
+- Issues: https://github.com/paulocfmarques-collab/esp32_wifi/issues
+- Pull Requests: https://github.com/paulocfmarques-collab/esp32_wifi/pulls
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for the IoT Community**
-
-If this project helped you, please consider giving it a ⭐!
-
-[⬆ Back to Top](#-esp32-network-provisioning--remote-device-management)
+**Feito com ❤️ para a comunidade ESP32 e IoT**
 
 </div>
