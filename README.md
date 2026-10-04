@@ -6,7 +6,7 @@
 ![Architecture](https://img.shields.io/badge/Architecture-Modular%20IoT-7C3AED?style=for-the-badge)
 ![Protocol](https://img.shields.io/badge/Protocol-UDP%20Control-10B981?style=for-the-badge)
 ![Language](https://img.shields.io/badge/Language-C%2B%2B-blue?style=for-the-badge&logo=c%2B%2B)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+![License](https://img.shields.io/badge/License-Not%20Declared-red?style=for-the-badge)
 
 **A production-grade platform for securing, configuring, monitoring, and managing ESP32 devices over Wi-Fi and UDP**
 
@@ -500,39 +500,29 @@ clang-format -i src/**/*.cpp
 - Confirm device IP address with `NET_INFO` command
 - Check UDP buffer size configuration
 
-### See [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) for more help
-
 ---
 
 ## 📚 Documentation
 
-- [Architecture Details](./docs/ARCHITECTURE.md)
-- [API Reference](./docs/API.md)
-- [Command Guide](./docs/COMMANDS.md)
-- [Hardware Setup](./docs/HARDWARE.md)
-- [Troubleshooting](./docs/TROUBLESHOOTING.md)
+- [Architecture Overview](#-architecture-overview)
+- [Command Reference](#-command-reference)
+- [Quick Start](#-quick-start)
+- [Troubleshooting](#-troubleshooting)
+- [Repository Files](https://github.com/paulocfmarques-collab/esp32_wifi)
 
 ---
 
 ## 📄 License
 
-This project is released under the **MIT License**. See [LICENSE](./LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- Built with [PlatformIO](https://platformio.org/) & [Arduino](https://www.arduino.cc/)
-- Inspired by IoT best practices and production requirements
-- Community feedback and contributions
+This repository does not currently declare a license file. If you want to publish it openly, add a license such as MIT, Apache 2.0, or GPL.
 
 ---
 
 ## 📞 Support & Contact
 
 - **Issues & Bugs:** [GitHub Issues](https://github.com/paulocfmarques-collab/esp32_wifi/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/paulocfmarques-collab/esp32_wifi/discussions)
-- **Documentation:** [Wiki](https://github.com/paulocfmarques-collab/esp32_wifi/wiki)
+- **Repository Files:** [Code & Modules](https://github.com/paulocfmarques-collab/esp32_wifi)
+- **Pull Requests:** [Open PRs](https://github.com/paulocfmarques-collab/esp32_wifi/pulls)
 
 ---
 
