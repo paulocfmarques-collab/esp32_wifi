@@ -11,10 +11,13 @@ namespace Config {
 
     constexpr uint8_t SCREEN_WIDTH = 128;
     constexpr uint8_t SCREEN_HEIGHT = 64;
-    constexpr uint8_t MAX_LINHAS = 8;
+    constexpr uint8_t MAX_LINHAS = 7; // Limite de linhas de log na tela OLED
     
     constexpr uint16_t UDP_PORT = 4210;
     constexpr int FUSO_PADRAO = -3; // Fuso de Brasília
+
+    constexpr const float MB = 1024.0 * 1024.0; // Constante para conversão de bytes para megabytes
+    constexpr const float KB = 1024.0; // Constante para conversão de bytes para kilobytes
 }
 
 const char htmlPage[] PROGMEM = R"rawliteral(

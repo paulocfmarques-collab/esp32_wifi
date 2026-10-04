@@ -68,7 +68,7 @@ private:
         String dataHoraCompleta;
         ntp.getDateTime(dataHoraCompleta, 50);
         display.setCursor(0, 0);
-        display.print("[" + (dataHoraCompleta.indexOf("Erro") == -1 && dataHoraCompleta.length() >= 19 ? dataHoraCompleta.substring(11) : "00:00:00") + "]");
+        display.print("[" + (dataHoraCompleta.indexOf("Erro") == -1 && dataHoraCompleta.length() >= 19 ? dataHoraCompleta : "00/00/0000 00:00:00") + "]");
         
         display.drawFastHLine(0, 9, Config::SCREEN_WIDTH, SSD1306_WHITE);
 
