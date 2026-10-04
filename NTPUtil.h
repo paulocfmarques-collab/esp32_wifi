@@ -60,6 +60,12 @@ public:
             dateTime = "Erro ao obter data e hora";
         }
     }
+
+    bool isSincronizado() 
+    {
+        struct tm timeinfo;
+        return getLocalTime(&timeinfo, 1000);
+    }
 };
 
 extern NTPUtil ntp;

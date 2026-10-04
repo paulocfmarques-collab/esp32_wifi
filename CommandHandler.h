@@ -58,6 +58,7 @@ public:
                    "set_fuso: : Altera GMT do NTP (Ex: set_fuso:-3)\n"
                    "reset_wifi: Limpa a Flash e abre o Portal AP\n"
                    "========================";
+            network.responderUDP(resp + "\n");
         }
         else if (cmd == "info") {
             String dataHoraCompleta; ntp.getDateTime(dataHoraCompleta, 100);
@@ -98,13 +99,13 @@ public:
             network.responderUDP("Versao Firmware: v1.0.0\n");
         }
         else if (cmd == "build") {
-            network.responderUDP("Data/Hora Build: " + String(__DATE__) + " " + String(__TIME__) + "\n");
+            network.responderUDP("Build\nData: " + String(__DATE__) + "\nHora Build: " + String(__TIME__) + "\n");
         }
         else if (cmd == "status") {
             String status = "===== STATUS =====\n";
             status += "Wi-Fi: " + String(WiFi.status() == WL_CONNECTED ? "Conectado" : "Desconectado") + "\n";
-            status += "IP: " + WiFi.localIP().toString() + "\n";
-            status += "RSSI: " + String(WiFi.RSSI()) + " dBm\n";
+            status += "SD: N/A\n";
+            status += "NTP: " + String(ntp.isSincronizado() ? "Sincronizado" : "Não sincronizado") + "\n";
             status += "Heap Livre: " + String(ESP.getFreeHeap() / Config::KB, 1) + " KB\n";
             status += "==================\n";
             network.responderUDP(status);
@@ -114,8 +115,7 @@ public:
             delay(1000);
             ESP.restart();
         }
-        else
-        if (cmd == "reset_wifi") {
+        else if (cmd == "reset_wifi") {
             network.forcarReinicializacaoComLimpeza();
         }
         else if (cmd.startsWith("set_fuso")) {
@@ -214,27 +214,36 @@ public:
             network.responderUDPPrintf("CPU Temp: %.2f\n", t);
         }
         else if (cmd == "cpu") {
-            network.responderUDPPrintf("Modelo: %s\nRevisao: %d\nNucleos: %d\nCPU: %d MHz\nRAM livre: %0.2f KB\n", 
-                ESP.getChipModel(), ESP.getChipRevision(), ESP.getChipCores(), ESP.getCpuFreqMHz(), ESP.getFreeHeap() / Config::KB);
+            network.responderUDPPrintf("Modelo: %s\nRevisao: %d\nNucleos: %d\nCPU: %d MHz\n", 
+                ESP.getChipModel(), ESP.getChipRevision(), ESP.getChipCores(), ESP.getCpuFreqMHz());
         }
         else if (cmd == "ram") {
-            network.responderUDPPrintf("Heap livre: %0.2f KB\nMenor heap livre: %0.2f KB\nMaior bloco livre: %0.2f KB\n", 
-                ESP.getFreeHeap() / Config::KB, ESP.getMinFreeHeap() / Config::KB, ESP.getMaxAllocHeap() / Config::KB);
+            network.responderUDPPrintf("Heap Total: %0.2f KB\nHeap livre: %0.2f KB\nMenor bloco livre: %0.2f KB\nMaior bloco livre: %0.2f KB\nRAM utilizada: %0.1f %%\n", 
+                ESP.getHeapSize() / Config::KB, ESP.getFreeHeap() / Config::KB, ESP.getMinFreeHeap() / Config::KB, ESP.getMaxAllocHeap() / Config::KB, 
+                (1.0 - ((float)ESP.getFreeHeap() / (float)ESP.getHeapSize())) * 100.0);
         }
         else if (cmd == "flash") {
-            network.responderUDPPrintf("Flash total: %0.2f MB\nVelocidade Flash: %u\nTamanho Sketch: %0.2f MB\nEspaco livre: %0.2f MB\n", 
-                ESP.getFlashChipSize() / Config::MB, ESP.getFlashChipSpeed(), ESP.getSketchSize() / Config::MB, ESP.getFreeSketchSpace() / Config::MB);
+            network.responderUDPPrintf("Flash total: %0.2f MB\nVelocidade Flash: %0.2f MHz\nFlash mode: %u\nSketch Size: %0.2f MB\nEspaço livre Sketch: %0.2f MB\nFlash livre: %0.1f %%\n", ESP.getFlashChipSize() / Config::MB, ESP.getFlashChipSpeed() / 1000000.0, ESP.getFlashChipMode(), ESP.getSketchSize() / Config::MB, ESP.getFreeSketchSpace() / Config::MB, (1.0 - ((float)ESP.getFreeSketchSpace() / (float)ESP.getSketchSize())) * 100.0);
         }
         else if (cmd == "uptime") {
-            network.responderUDPPrintf("Uptime: %lu ms\n", millis());    
+            network.responderUDPPrintf("Uptime: %d s\n", millis() / 1000);    
         }
         else if (cmd == "mac") {
             network.responderUDP("MAC: " + WiFi.macAddress() + "\n");
         }
         else if (cmd == "net_info") {
-            network.responderUDPPrintf("IP: %s\nGateway: %s\nMascara: %s\nRSSI: %d dbm\nSSID: %s\n", 
-                WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(), 
-                WiFi.subnetMask().toString().c_str(), WiFi.RSSI(), WiFi.SSID().c_str());
+            network.responderUDPPrintf("SSID: %s\nIP: %s\nGateway: %s\nSubnet Mask: %s\nDNS1: %s\nDNS2: %s\nRSSI: %d dbm\n", 
+                WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(), 
+                WiFi.subnetMask().toString().c_str(), WiFi.dnsIP(0).toString().c_str(), WiFi.dnsIP(1).toString().c_str(), WiFi.RSSI());
+        }
+        else if (cmd == "alive") 
+        {
+            network.responderUDPPrintf("%s - yes\n", WiFi.localIP().toString().c_str());
+        }
+        else if (cmd == "psram") 
+        {
+            bool psramDisponivel = ESP.getPsramSize() > 0;
+            network.responderUDPPrintf("PSRAM presente: %s\nTamanho: %0.2f MB\nLivre: %0.2f MB\nMaior bloco livre: %0.2f MB\nPSRAM utilizada: %0.1f %%\n", psramDisponivel ? "SIM" : "NAO", ESP.getPsramSize() / Config::MB, ESP.getFreePsram() / Config::MB, ESP.getMaxAllocPsram() / Config::MB, (1.0 - ((float)ESP.getFreePsram() / (float)ESP.getPsramSize())) * 100.0);
         }
         else {
             network.responderUDP("Comando desconhecido\n");
