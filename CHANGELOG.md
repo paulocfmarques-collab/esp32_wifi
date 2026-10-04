@@ -7,35 +7,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
-- Professional GitHub README structure and visual upgrade.
-- Improved project documentation for easier onboarding and repository presentation.
-- Clear sections for features, architecture, quick start, command reference, and troubleshooting.
-- Documentation links corrected to match the actual repository content.
+- README aligned with the actual repository structure and real implemented files.
+- Command reference updated to match the commands present in `CommandHandler.h` and `wifi.ino`.
+- Clear documentation of the Wi‑Fi provisioning flow, UDP protocol, and project architecture.
+- Troubleshooting section adjusted to reflect current ESP32 behavior.
 
 ### Changed
-- Reworked the project landing page to be more polished and presentation-oriented for GitHub users.
-- Refined the project description to emphasize ESP32 provisioning, monitoring, and device management.
+- Reworked the repository overview to describe the real modular design instead of the old placeholder structure.
+- Updated project description to focus on actual provisioning, monitoring, and remote device management capabilities.
+- Simplified and corrected the documentation entries for the current codebase.
 
 ### Fixed
-- Broken documentation links in the README.
-- Inaccurate references to documentation files that did not exist in the repository.
+- Incorrect references to non-existent `src/`, `include/`, `docs/`, and `data/` folders.
+- README entries that did not match the actual code structure and command list.
+- Documentation mismatches between the project description and the implemented ESP32 firmware.
 
 ## [1.0.0] - 2026-10-04
 
 ### Added
-- Initial ESP32 Wi-Fi provisioning workflow.
+- Initial ESP32 Wi‑Fi provisioning workflow.
 - Remote device management over UDP.
 - Command-based hardware control layer for LED, time, and network settings.
-- Persistent Wi-Fi credential storage using NVS/Preferences.
+- Persistent Wi‑Fi credential storage using Preferences.
 - Device monitoring and diagnostics for CPU, RAM, flash, uptime, and network status.
-- Modular architecture for WiFi manager, UDP gateway, command processor, display, RGB, and system monitor components.
-- GitHub repository structure and project documentation foundation.
+- Modular architecture for Wi‑Fi manager, UDP network layer, display, hardware control, NTP utilities, and command execution.
+- GitHub repository structure and foundational project documentation.
 
 ### Features
 - Access point mode for first-time provisioning.
 - Remote command execution via UDP gateway.
 - Basic telemetry and status reporting.
-- Modular support for RGB LED feedback and display output.
+- Modular support for LED feedback and display output.
 - External integration support for embedded IoT deployments.
 
 ---
