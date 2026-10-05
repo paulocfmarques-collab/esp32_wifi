@@ -14,9 +14,12 @@ private:
     int totalLinhas;
     bool oledInicializado;
     unsigned long ultimaAtualizacaoRelogio;
+    bool modoRelogioGrande; // <- Controla o estado de exibição
 
 public:
-    DisplayManager() : display(Config::SCREEN_WIDTH, Config::SCREEN_HEIGHT, &Wire, -1), totalLinhas(0), oledInicializado(false), ultimaAtualizacaoRelogio(0) {}
+    DisplayManager() : display(Config::SCREEN_WIDTH, Config::SCREEN_HEIGHT, &Wire, -1), 
+                       totalLinhas(0), oledInicializado(false), ultimaAtualizacaoRelogio(0),
+                       modoRelogioGrande(false) {}
 
     void begin() {
         Wire.begin(Config::PIN_SDA, Config::PIN_SCL); 
@@ -30,11 +33,19 @@ public:
         }
     }
 
+    void setModoRelogioGrande(bool ativar) {
+        modoRelogioGrande = ativar;
+        renderizar();
+    }
+
+    bool getModoRelogioGrande() const {
+        return modoRelogioGrande;
+    }
+
     void adicionarLinha(const String& novoTexto) {
         Serial.println("[OLED] " + novoTexto);
         if (!oledInicializado) return;
 
-        // Limita a área inferior de logs (desconta espaço reservado do relógio)
         if (totalLinhas >= (Config::MAX_LINHAS - 1)) {
             for (int i = 0; i < (Config::MAX_LINHAS - 2); i++) {
                 historicoLinhas[i] = historicoLinhas[i + 1];
@@ -44,13 +55,16 @@ public:
             historicoLinhas[totalLinhas] = novoTexto;
             totalLinhas++;
         }
-        renderizar();
+        
+        // Se estiver no modo relógio grande, não renderiza o log imediatamente na tela
+        if (!modoRelogioGrande) {
+            renderizar();
+        }
     }
 
     void atualizarTela(NTPUtil& ntpService) {
         if (!oledInicializado) return;
 
-        // Atualiza a tela a cada 1 segundo para atualizar o relógio sem travar o loop
         unsigned long agora = millis();
         if (agora - ultimaAtualizacaoRelogio >= 1000) {
             ultimaAtualizacaoRelogio = agora;
@@ -61,10 +75,19 @@ public:
 private:
     void renderizar() {
         display.clearDisplay();
-        display.setTextSize(1);
         display.setTextColor(SSD1306_WHITE);
+
+        if (modoRelogioGrande) {
+            renderizarRelogioGrande();
+        } else {
+            renderizarLogs();
+        }
         
-        // Exibe o relógio fixo na linha 0
+        display.display();
+    }
+
+    void renderizarLogs() {
+        display.setTextSize(1);
         String dataHoraCompleta;
         ntp.getDateTime(dataHoraCompleta, 50);
         display.setCursor(0, 0);
@@ -72,12 +95,37 @@ private:
         
         display.drawFastHLine(0, 9, Config::SCREEN_WIDTH, SSD1306_WHITE);
 
-        // Renderiza os históricos salvos abaixo da linha separadora
         for (int i = 0; i < totalLinhas; i++) {
             display.setCursor(0, 12 + (i * 8)); 
             display.println(historicoLinhas[i]);
         }
-        display.display();
+    }
+
+    void renderizarRelogioGrande() {
+        String dataHoraCompleta;
+        ntp.getDateTime(dataHoraCompleta, 50);
+        
+        String dataStr = "--/--/----";
+        String horaStr = "--:--:--";
+        
+        if (dataHoraCompleta.length() >= 19) {
+            dataStr = dataHoraCompleta.substring(0, 10); // DD/MM/AAAA
+            horaStr = dataHoraCompleta.substring(11, 19); // HH:MM:SS
+        }
+
+        // Desenha a Hora Grande (Tamanho de fonte 2)
+        display.setTextSize(2);
+        // Centralização aproximada para fonte tam 2 (cada caractere tem 12px de largura, 8 caracteres = 96px)
+        int16_t xHora = (Config::SCREEN_WIDTH - 96) / 2; 
+        display.setCursor(xHora, 15);
+        display.print(horaStr);
+
+        // Desenha a Data Média (Tamanho de fonte 1)
+        display.setTextSize(1);
+        // Centralização aproximada para fonte tam 1 (cada caractere tem 6px de largura, 10 caracteres = 60px)
+        int16_t xData = (Config::SCREEN_WIDTH - 60) / 2;
+        display.setCursor(xData, 42);
+        display.print(dataStr);
     }
 };
 

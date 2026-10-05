@@ -28,6 +28,36 @@ public:
             default:                return "CODIGO NAO MAPEADO";
         }
     }
+
+    static String obterVersaoAutomatica() {
+        // Extração matemática da Data (AAMMDD)
+        int ano = ((__DATE__[9] - '0') * 10) + (__DATE__[10] - '0');
+        
+        int mes = (__DATE__[0] == 'J' && __DATE__[1] == 'a' && __DATE__[2] == 'n') ? 1 :
+                  (__DATE__[0] == 'F')                                             ? 2 :
+                  (__DATE__[0] == 'M' && __DATE__[1] == 'a' && __DATE__[2] == 'r') ? 3 :
+                  (__DATE__[0] == 'A' && __DATE__[1] == 'p')                       ? 4 :
+                  (__DATE__[0] == 'M' && __DATE__[1] == 'a' && __DATE__[2] == 'y') ? 5 :
+                  (__DATE__[0] == 'J' && __DATE__[1] == 'u' && __DATE__[2] == 'n') ? 6 :
+                  (__DATE__[0] == 'J' && __DATE__[1] == 'u' && __DATE__[2] == 'l') ? 7 :
+                  (__DATE__[0] == 'A' && __DATE__[1] == 'u')                       ? 8 :
+                  (__DATE__[0] == 'S')                                             ? 9 :
+                  (__DATE__[0] == 'O')                                             ? 10 :
+                  (__DATE__[0] == 'N')                                             ? 11 :
+                  (__DATE__[0] == 'D')                                             ? 12 : 0;
+                  
+        int dia = (__DATE__[4] == ' ' ? 0 : __DATE__[4] - '0') * 10 + (__DATE__[5] - '0');
+
+        // Extração matemática do Horário (HHMM)
+        int hora   = ((__TIME__[0] - '0') * 10) + (__TIME__[1] - '0');
+        int minuto = ((__TIME__[3] - '0') * 10) + (__TIME__[4] - '0');
+
+        // Monta a string de forma segura usando buffers de formatação estáveis
+        char buffer[32];
+        snprintf(buffer, sizeof(buffer), "%02d%02d%02d.%02d.%02d", ano, mes, dia, hora, minuto);
+        
+        return String(buffer);
+    }    
     
     static void executar(const String& cmd) {
         Serial.print(F("Comando recebido: "));
@@ -54,11 +84,16 @@ public:
                    "time      : Hora calculada via NTP\n"
                    "date      : Data calculada via NTP\n"
                    "reset     : Reinicia o ESP32\n"
+                   "clock     : Ativa o modo relogio grande\n"
                    "--- CONFIGURACOES ---\n"
                    "set_fuso: : Altera GMT do NTP (Ex: set_fuso:-3)\n"
                    "reset_wifi: Limpa a Flash e abre o Portal AP\n"
                    "========================";
             network.responderUDP(resp + "\n");
+        }
+        else if (cmd == "clock") {
+            oled.setModoRelogioGrande(true);
+            network.responderUDP("Modo relogio grande ativado. Envie qualquer comando para sair.\n");
         }
         else if (cmd == "info") {
             String dataHoraCompleta; ntp.getDateTime(dataHoraCompleta, 100);
@@ -72,7 +107,7 @@ public:
 
             resp = "===== DEVICE INFO =====\n"
                 "Hostname: ESP32\n"
-                "Firmware: 1.0.0\n"
+                "Firmware: " + obterVersaoAutomatica() + "\n"
                 "Build: " + String(__DATE__) + " " + String(__TIME__) + "\n" +
                 "SSID: " + WiFi.SSID() + "\n" +
                 "IP: " + WiFi.localIP().toString() + "\n" +
@@ -96,7 +131,7 @@ public:
             network.responderUDP(resp + "\n");
         }
         else if (cmd == "version") {
-            network.responderUDP("Versao Firmware: v1.0.0\n");
+            network.responderUDP("Versao Firmware: " + obterVersaoAutomatica() + "\n");
         }
         else if (cmd == "build") {
             network.responderUDP("Build\nData: " + String(__DATE__) + "\nHora Build: " + String(__TIME__) + "\n");

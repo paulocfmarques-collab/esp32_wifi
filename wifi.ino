@@ -59,6 +59,11 @@ void loop() {
 
         String comandoRecebido;
         if (network.checarMensagensUDP(comandoRecebido)) {
+            if (oled.getModoRelogioGrande()) {
+                oled.setModoRelogioGrande(false);
+                oled.adicionarLinha("Retornando aos logs...");
+            }
+            
             CommandHandler::executar(comandoRecebido);
         }
     }
