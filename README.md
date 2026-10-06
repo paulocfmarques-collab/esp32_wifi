@@ -5,247 +5,213 @@
 ![ESP32 WiFi](https://img.shields.io/badge/ESP32-WiFi%20Provisioning-00A3FF?style=for-the-badge&logo=arduino&logoColor=white)
 ![Architecture](https://img.shields.io/badge/Architecture-Modular%20IoT-7C3AED?style=for-the-badge)
 ![Protocol](https://img.shields.io/badge/Protocol-UDP%20Control-10B981?style=for-the-badge)
-![Language](https://img.shields.io/badge/Language-C%2B%2B-blue?style=for-the-badge&logo=c%2B%2B)
-![License](https://img.shields.io/badge/License-Not%20Declared-red?style=for-the-badge)
+![Language](https://img.shields.io/badge/Language-C%2B%2B-00599C?style=for-the-badge&logo=c%2B%2B)
+![Status](https://img.shields.io/badge/Status-Active%20Project-34D399?style=for-the-badge)
 
-**Plataforma modular para provisionamento Wi‑Fi, monitoramento e controle remoto de dispositivos ESP32 via rede local.**
+Projeto modular para provisionamento Wi‑Fi, monitoramento de sistema e controle remoto de dispositivos ESP32 em rede local.
 
 </div>
 
 ---
 
-## 🎯 Visão geral
+## 📌 Visão geral
 
-Este projeto foi pensado para simplificar o ciclo de vida operacional de dispositivos ESP32 em rede local. Ele combina:
+Este repositório implementa uma solução embarcada para dispositivos ESP32 com:
 
-- provisionamento Wi‑Fi via portal local
-- armazenamento persistente de credenciais
-- sincronização NTP
-- monitoramento de hardware
-- controle remoto via UDP
-- gerenciamento de LED, display e diagnósticos
+- provisionamento Wi‑Fi automatizado em modo AP/STA
+- portal de configuração por navegador
+- armazenamento persistente de credenciais em `Preferences`
+- sincronização NTP e ajuste de timezone/DST
+- controle remoto por comandos UDP na porta `4210`
+- monitoramento de hardware, rede e status do sistema
+- interface com display OLED e feedback visual via LED
 
-É um projeto modular, com responsabilidades separadas por arquivos e componentes, permitindo evoluir com facilidade e manter manutenção simples.
+A arquitetura foi organizada em módulos independentes para facilitar manutenção, extensão e depuração.
 
 ---
 
 ## ✨ Funcionalidades principais
 
-<table>
-  <tr>
-    <td width="50%">
-      <h3>🔐 Provisionamento e segurança</h3>
-      <ul>
-        <li>Portal de configuração em modo AP</li>
-        <li>Armazenamento persistente de SSID/senha em Preferences</li>
-        <li>Reconexão automática e reset de credenciais</li>
-        <li>Modo de recuperação via reset Wi‑Fi</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>📡 Controle remoto</h3>
-      <ul>
-        <li>Gateway UDP na porta 4210</li>
-        <li>Comandos textuais simples</li>
-        <li>Resposta direta para cliente remoto</li>
-        <li>Diagnóstico e monitoramento via rede</li>
-      </ul>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🎛️ Integração com hardware</h3>
-      <ul>
-        <li>Controle de LED</li>
-        <li>Atualização de display</li>
-        <li>Suporte de monitoramento do sistema</li>
-        <li>Gerenciamento de reset e estado do dispositivo</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>📊 Monitoramento</h3>
-      <ul>
-        <li>Temperatura da CPU</li>
-        <li>Heap e RAM livres</li>
-        <li>Flash e PSRAM</li>
-        <li>Uptime, NTP e motivo do último reset</li>
-      </ul>
-    </td>
-  </tr>
-</table>
-
----
-
-## 🚀 Guia rápido
-
-### Pré-requisitos
-
-- ESP32
-- Arduino IDE ou PlatformIO
-- Cabo USB para gravação
-- Rede Wi‑Fi local
-
-### 1) Clone o repositório
-
-```bash
-git clone https://github.com/paulocfmarques-collab/esp32_wifi.git
-cd esp32_wifi
-```
-
-### 2) Configure o projeto
-
-O projeto usa arquivos de configuração em nível de código, como:
-
-```cpp
-#include "Config.h"
-```
-
-Edite `Config.h` conforme a sua aplicação e a pinagem do hardware.
-
-### 3) Faça o upload para o ESP32
-
-No Arduino IDE:
-
-- abra `wifi.ino`
-- selecione a placa ESP32 correta
-- escolha a porta serial
-- faça upload
-
-Ou com PlatformIO:
-
-```bash
-pio run -t upload
-```
-
-### 4) Primeiro acesso
-
-Ao iniciar sem credenciais salvas, o dispositivo entra em modo AP e abre um portal local.
-
-- SSID do AP: `ESP32_CONFIG`
-- Portal: `http://192.168.4.1`
-- Informe SSID e senha da rede Wi‑Fi
-- Salve e reinicie o dispositivo
+- Provisionamento de rede com fallback para captive portal
+- Conexão automática à Wi‑Fi salva em memória não volátil
+- Reset de credenciais via comando dedicado
+- Comunicação UDP com servidor de comandos textuais
+- Diagnóstico local de CPU, RAM, flash, temperatura, uptime e rede
+- Inicialização e controle de display OLED e LED
+- Suporte a NTP para sincronização de tempo e data
+- Estrutura modular por responsabilidade de arquivo
 
 ---
 
 ## 🏗️ Arquitetura do sistema
 
 ```mermaid
-flowchart TB
-    subgraph Entrada[Usuário]
-        WEB[🌐 Navegador]
-        CLIENT[📱 Cliente UDP]
-    end
+flowchart TD
+    WEB[Browser / Portal Web] --> AP[Modo AP]
+    AP --> PREF[Preferences]
+    PREF --> WIFI[WiFi STA]
 
-    subgraph Core[ESP32]
-        PORTAL[🔧 Portal de Configuração]
-        PREF[💾 Preferences]
-        WIFI[📡 WiFi]
-        NET[🚪 NetworkManager]
-        CMD[⚡ CommandHandler]
-        LED[🎨 HardwareController]
-        DISP[📺 DisplayManager]
-        NTP[🕐 NTPUtil]
-        MON[📊 Diagnósticos]
-    end
-
-    WEB --> PORTAL
-    PORTAL --> PREF
-    PREF --> WIFI
-    CLIENT --> NET
-    NET --> CMD
-    CMD --> LED
-    CMD --> DISP
-    CMD --> NTP
-    CMD --> MON
+    CLIENT[Cliente UDP] --> NET[NetworkManager.h]
+    NET --> CMD[CommandHandler.h]
+    CMD --> LED[HardwareController.h]
+    CMD --> DISP[DisplayManager.h]
+    CMD --> NTP[NTPUtil.h]
+    CMD --> MON[Diagnóstico e status]
 ```
 
 ### Fluxo de boot
 
 ```mermaid
-flowchart TD
-    A[🔌 Inicialização] --> B{Credenciais salvas?}
-    B -->|Não| C[📡 Ativa AP]
-    C --> D[🌐 Abre portal]
-    D --> E[💾 Salva SSID/senha]
-    E --> F[🔄 Reinicia]
-    B -->|Sim| G[🔗 Conecta ao Wi‑Fi]
-    G --> H{Conexão OK?}
-    H -->|Não| C
-    H -->|Sim| I[🚪 Inicializa UDP]
-    I --> J[📺 Inicializa display]
-    J --> K[🎨 Inicializa LED]
-    K --> L[🕐 Inicializa NTP]
-    L --> M[⚡ Sistema pronto]
+flowchart LR
+    A[Inicialização] --> B{Credenciais salvas?}
+    B -- Não --> C[Ativa AP]
+    C --> D[Abrir portal de configuração]
+    D --> E[Salvar SSID e senha]
+    E --> F[Reiniciar]
+    B -- Sim --> G[Conectar ao Wi‑Fi]
+    G --> H{Conectado?}
+    H -- Não --> C
+    H -- Sim --> I[Iniciar UDP]
+    I --> J[Inicializar display]
+    J --> K[Inicializar LED]
+    K --> L[Sincronizar NTP]
+    L --> M[Sistema pronto]
 ```
+
+---
+
+## 📁 Estrutura real do repositório
+
+```text
+esp32_wifi/
+├── CHANGELOG.md
+├── CommandHandler.h
+├── Config.h
+├── DisplayManager.h
+├── HardwareController.h
+├── NTPUtil.h
+├── NetworkManager.h
+├── README.md
+├── wifi.ino
+└── LICENSE (se presente no clone ou fork)
+```
+
+> A estrutura do projeto atual foi validada diretamente dos arquivos presentes no repositório. Não há pastas `src/`, `include/`, `docs/` ou `data/` no código atual.
+
+---
+
+## 🧩 Descrição dos arquivos principais
+
+| Arquivo | Função |
+| :--- | :--- |
+| `wifi.ino` | Ponto de entrada principal do firmware e ciclo de execução do ESP32 |
+| `Config.h` | Definições globais, portas, parâmetros de rede, fuso e HTML do portal |
+| `NetworkManager.h` | Gerencia Wi‑Fi, AP, Preferences, UDP e respostas do protocolo |
+| `CommandHandler.h` | Processa comandos recebidos e executa diagnósticos/ações do sistema |
+| `DisplayManager.h` | Renderiza mensagens e relógio no display OLED |
+| `HardwareController.h` | Controle do LED e estados do hardware |
+| `NTPUtil.h` | Sincronização de data/hora via NTP e ajustes de timezone/DST |
+| `CHANGELOG.md` | Histórico de versões e mudanças do projeto |
+| `README.md` | Documentação principal do repositório |
+
+---
+
+## 🚀 Guia rápido de uso
+
+### Pré-requisitos
+
+- Placa ESP32 compatível
+- Arduino IDE ou PlatformIO
+- Cabo USB
+- Rede Wi‑Fi local para acesso e testes
+
+### 1) Clonar o repositório
+
+```bash
+git clone https://github.com/paulocfmarques-collab/esp32_wifi.git
+cd esp32_wifi
+```
+
+### 2) Abrir no Arduino IDE
+
+- Abra o arquivo `wifi.ino`
+- Ajuste a placa e a porta serial corretas
+- Compile e faça upload no ESP32
+
+### 3) Primeiro acesso
+
+Se o dispositivo não tiver credenciais salvas, ele entra em modo AP:
+
+- SSID: `ESP32_CONFIG`
+- Endereço do portal: `http://192.168.4.1`
+
+No portal, informe o SSID e a senha da rede Wi‑Fi e salve.
+
+### 4) Operação normal
+
+Depois da conexão, o módulo:
+
+- inicia o serviço UDP na porta `4210`
+- sincroniza hora via NTP
+- responde a comandos de diagnóstico e controle
+- permanece pronto para integração em rede local
 
 ---
 
 ## 📡 Protocolo de comunicação
 
-- Porta UDP padrão: `4210`
-- Payload: texto simples
-- Resposta: texto estruturado em retorno UDP
-- Cliente pode enviar comandos diretamente para o ESP32 conectado na LAN
+O projeto usa comunicação UDP em texto simples. A porta padrão é:
 
-```mermaid
-sequenceDiagram
-    participant Cliente as 📱 Cliente UDP
-    participant ESP as 🚪 DeviceNetwork
-    participant Handler as ⚡ CommandHandler
+- `4210`
 
-    Cliente->>ESP: Envia comando
-    ESP->>Handler: Processa mensagem
-    Handler-->>ESP: Gera resposta
-    ESP-->>Cliente: Retorna resultado
+O cliente pode enviar comandos textuais diretamente para o IP do ESP32 na rede local e receber respostas em texto estruturado.
+
+Exemplo de fluxo:
+
+```text
+Cliente UDP -> ESP32: help
+ESP32 -> Cliente UDP: lista de comandos disponíveis
 ```
 
 ---
 
-## 🎮 Lista de comandos implementados
+## 🧠 Comandos principais implementados
 
-A lista abaixo reflete os comandos efetivamente presentes no projeto atual, conforme `CommandHandler.h` e `wifi.ino`.
+Baseado no conteúdo atual de `CommandHandler.h` e `wifi.ino`, os comandos incluem:
 
-### 🔹 Comandos gerais e diagnósticos
+### Diagnóstico e status
 
-| Comando | Sintaxe | Descrição |
-| :--- | :--- | :--- |
-| `help` | `help` | Lista os comandos disponíveis |
-| `info` | `info` | Exibe status completo do dispositivo |
-| `status` | `status` | Resumo rápido de rede, heap e NTP |
-| `reason` | `reason` | Mostra o motivo do último reset |
-| `version` | `version` | Retorna a versão do firmware |
-| `build` | `build` | Exibe data e hora da compilação |
-| `cpu` | `cpu` | Modelo, revisão, núcleos e frequência |
-| `ram` | `ram` | Heap total, livre, menor e maior bloco |
-| `flash` | `flash` | Informações da flash e espaço livre |
-| `temp` | `temp` | Temperatura interna da CPU |
-| `mac` | `mac` | Endereço MAC do Wi‑Fi |
-| `net_info` | `net_info` | SSID, IP, gateway, subnet, DNS e RSSI |
-| `uptime` | `uptime` | Tempo de atividade em segundos |
-| `time` | `time` | Hora atual via NTP |
-| `date` | `date` | Data atual via NTP |
-| `reset` | `reset` | Reinicia o ESP32 |
-| `alive` | `alive` | Verificação de presença / resposta ping |
-| `psram` | `psram` | Estado e uso da PSRAM, quando disponível |
+- `help`
+- `info`
+- `status`
+- `reason`
+- `version`
+- `build`
+- `cpu`
+- `ram`
+- `flash`
+- `temp`
+- `mac`
+- `net_info`
+- `time`
+- `date`
+- `uptime`
+- `alive`
+- `psram`
 
-### 🔧 Comandos de configuração
+### Configuração
 
-| Comando | Sintaxe | Descrição |
-| :--- | :--- | :--- |
-| `set_fuso` | `set_fuso:-3` | Ajusta o timezone usado pelo NTP |
-| `reset_wifi` | `reset_wifi` | Limpa credenciais e reinicia para configurar novamente |
-| `dst_on` | `dst_on` | Ativa horário de verão |
-| `dst_off` | `dst_off` | Desativa horário de verão |
+- `reset_wifi`
+- `set_fuso`
+- `dst_on`
+- `dst_off`
 
-### 💡 Comandos de LED
+### Hardware e feedback
 
-| Comando | Sintaxe | Descrição |
-| :--- | :--- | :--- |
-| `led_on` | `led_on` | Liga o LED |
-| `led_off` | `led_off` | Desliga o LED |
-| `led_pisca` | `led_pisca:10:250` | Pisca N vezes com intervalo em ms |
-| `led_blink` | `led_blink:500` | Liga o blink assíncrono com intervalo em ms |
+- `led_on`
+- `led_off`
+- `led_pisca`
+- `led_blink`
 
 ### Exemplo de uso
 
@@ -263,85 +229,36 @@ SET_FUSO:-3
 
 ---
 
-## 📁 Estrutura real do repositório
+## 🔧 Monitoramento e diagnósticos
 
-A estrutura atual do projeto é a seguinte:
+O firmware oferece informações de:
 
-```text
-esp32_wifi/
-├── CHANGELOG.md
-├── CommandHandler.h
-├── Config.h
-├── DisplayManager.h
-├── HardwareController.h
-├── NTPUtil.h
-├── NetworkManager.h
-├── README.md
-├── wifi.ino
-└── LICENSE (se presente no fork/clone)
-```
+- temperatura da CPU
+- memória heap e blocos livres
+- uso de flash e PSRAM
+- uptime do sistema
+- endereço MAC
+- informações de rede (IP, gateway, máscara, RSSI)
+- motivo do último reset
+- sincronização NTP
 
-> O README anterior descrevia uma estrutura baseada em `src/`, `include/`, `docs/` e `data/`, mas a árvore real do repositório atual é a listada acima.
+Esses dados são úteis para manutenção remota, depuração e revisão de operação em campo.
 
 ---
 
-## 🔧 Componentes principais
+## 🛠️ Recursos de hardware
 
-### `NetworkManager.h`
+O projeto trabalha com as seguintes funções principais:
 
-Responsável por:
+- Wi‑Fi STA/AP
+- Portal web de configuração
+- Display OLED
+- LED de indicação
+- Reset por botão
+- NTP para relógio e data
+- Comandos via UDP
 
-- conexão Wi‑Fi
-- criação e controle do portal AP
-- armazenamento de credenciais em `Preferences`
-- inicialização do socket UDP
-- envio de respostas para o cliente remoto
-- validação e processamento de mensagens UDP
-
-### `CommandHandler.h`
-
-Responsável por:
-
-- parser dos comandos recebidos
-- execução de diagnósticos locais
-- manipulação de tempo, reset, rede e hardware
-- respostas em texto para o cliente UDP
-- controle de LED, NTP, memória e processamento
-
-### `DisplayManager.h`
-
-Responsável por:
-
-- renderização visual do estado do dispositivo
-- apresentação de mensagens e diagnósticos
-- feedback visual para uso local
-
-### `HardwareController.h`
-
-Responsável por:
-
-- controle do LED físico
-- sincronização de blink
-- leitura de temperatura
-- gestão básica de estados do hardware
-
-### `NTPUtil.h`
-
-Responsável por:
-
-- sincronização temporal via NTP
-- cálculo de fuso horário
-- suporte a horário de verão
-- atualização de data/hora para comandos `time` e `date`
-
-### `Config.h`
-
-Arquivo central com constantes e parâmetros do projeto, como:
-
-- porta UDP
-- nome da rede AP
-- fuso padrão
-- parâmetros globais do sistema
+A definição de pinagem e parâmetros do hardware ficam em `Config.h`.
 
 ---
 
@@ -349,34 +266,34 @@ Arquivo central com constantes e parâmetros do projeto, como:
 
 ### Wi‑Fi não conecta
 
-- Verifique se as credenciais estão corretas
-- Delete as informações salvas usando `reset_wifi`
-- Confirme que a rede é 2.4 GHz e está acessível
+- Verifique o SSID e a senha salvos
+- Execute `reset_wifi` para limpar credenciais
+- Confirme se a rede é 2.4 GHz e acessível
 
-### Socket UDP não responde
+### UDP não responde
 
-- Confirme se o ESP32 está conectado à rede local
+- Confirme que o ESP32 está conectado à rede local
 - Verifique se a porta `4210` está liberada
 - Teste o comando `alive`
-- Confirme o IP do dispositivo com `net_info`
+- Confira o IP do dispositivo com `net_info`
 
 ### NTP não sincroniza
 
-- Verifique conexão com a internet
+- Verifique a conexão com a internet
 - Ajuste o fuso com `set_fuso:-3`
-- Teste `dst_on` e `dst_off` se o comportamento exigir
+- Ative ou desative `dst_on`/`dst_off` conforme necessário
 
 ### LED não responde
 
-- Verifique a pinagem do hardware
+- Verifique a pinagem do projeto em `Config.h`
 - Teste `led_on`, `led_off` e `led_blink`
-- Confirme que o sistema está com o controlador em execução
+- Confirme se o sistema está com o controlador em execução
 
 ---
 
 ## 📝 Changelog
 
-O histórico de mudanças está em [`CHANGELOG.md`](./CHANGELOG.md).
+O histórico completo está disponível em [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
@@ -385,15 +302,15 @@ O histórico de mudanças está em [`CHANGELOG.md`](./CHANGELOG.md).
 Contribuições são bem-vindas.
 
 1. Faça um fork do projeto
-2. Crie uma branch para a feature
-3. Faça o commit das alterações
+2. Crie uma branch para sua mudança
+3. Commit e push das alterações
 4. Abra um Pull Request
 
 ---
 
 ## 📄 Licença
 
-Este repositório ainda não declara uma licença explícita no arquivo principal. Caso queira publicar publicamente, recomenda-se adicionar uma licença como MIT, Apache 2.0 ou GPL.
+Este repositório ainda não possui uma licença declarada em arquivo explícito. Caso queira publicar uma versão pública do projeto, recomenda-se adicionar uma licença como MIT, Apache 2.0 ou GPL.
 
 ---
 
@@ -406,6 +323,6 @@ Este repositório ainda não declara uma licença explícita no arquivo principa
 
 <div align="center">
 
-**Feito com ❤️ para a comunidade ESP32 e IoT**
+Feito para a comunidade ESP32 e IoT.
 
 </div>
