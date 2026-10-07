@@ -44,8 +44,9 @@ void setup() {
 void loop() {
     hardware.atualizarBlink();
 
+    network.processarWebServer();
+
     if (!network.estaConectado()) {
-        network.processarWebServer();
         udpInicializado = false;
     } 
     else if (hardware.verificarBotaoReset()) {

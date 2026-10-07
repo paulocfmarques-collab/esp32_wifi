@@ -83,17 +83,18 @@ public:
                    "uptime    : Tempo de atividade em segundos\n"
                    "time      : Hora calculada via NTP\n"
                    "date      : Data calculada via NTP\n"
-                   "reset     : Reinicia o ESP32\n"
-                   "clock     : Ativa o modo relogio grande\n"
+                   "reboot    : Reinicia o ESP32\n"
+                   "heap      : Heap livre em KB\n"
+                   "rssi / ip : Sinal e IP do Wi-Fi\n"
+                   "alive     : Teste de presenca\n"
+                   "--- LED ---\n"
+                   "led_on / led_off\n"
+                   "led_blink:[ms] / led_pisca:[n]:[ms]\n"
                    "--- CONFIGURACOES ---\n"
                    "set_fuso: : Altera GMT do NTP (Ex: set_fuso:-3)\n"
                    "reset_wifi: Limpa a Flash e abre o Portal AP\n"
                    "========================";
             network.responderUDP(resp + "\n");
-        }
-        else if (cmd == "clock") {
-            oled.setModoRelogioGrande(true);
-            network.responderUDP("Modo relogio grande ativado. Envie qualquer comando para sair.\n");
         }
         else if (cmd == "info") {
             String dataHoraCompleta; ntp.getDateTime(dataHoraCompleta, 100);
@@ -145,7 +146,7 @@ public:
             status += "==================\n";
             network.responderUDP(status);
         }
-        else if (cmd == "reset") {
+        else if (cmd == "reboot") {
             network.responderUDP("Reiniciando o ESP32...\n");
             delay(1000);
             ESP.restart();
@@ -275,10 +276,14 @@ public:
         {
             network.responderUDPPrintf("%s - yes\n", WiFi.localIP().toString().c_str());
         }
-        else if (cmd == "psram") 
-        {
-            bool psramDisponivel = ESP.getPsramSize() > 0;
-            network.responderUDPPrintf("PSRAM presente: %s\nTamanho: %0.2f MB\nLivre: %0.2f MB\nMaior bloco livre: %0.2f MB\nPSRAM utilizada: %0.1f %%\n", psramDisponivel ? "SIM" : "NAO", ESP.getPsramSize() / Config::MB, ESP.getFreePsram() / Config::MB, ESP.getMaxAllocPsram() / Config::MB, (1.0 - ((float)ESP.getFreePsram() / (float)ESP.getPsramSize())) * 100.0);
+        else if (cmd == "heap") {
+            network.responderUDPPrintf("Heap livre: %0.2f KB\n", ESP.getFreeHeap() / Config::KB);
+        }
+        else if (cmd == "rssi") {
+            network.responderUDPPrintf("RSSI: %d dBm\n", WiFi.RSSI());
+        }
+        else if (cmd == "ip") {
+            network.responderUDP("IP: " + WiFi.localIP().toString() + "\n");
         }
         else {
             network.responderUDP("Comando desconhecido\n");
