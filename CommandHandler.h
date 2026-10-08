@@ -9,6 +9,13 @@
 #include "NTPUtil.h"
 
 class CommandHandler {
+    inline static String lastCommand = "Nenhum";
+    inline static uint32_t commandCount = 0;
+    static bool integer(const String& text,int low,int high,int& out){
+        if(text.isEmpty() || text.length()>6)return false;
+        for(size_t i=0;i<text.length();i++)if(!isDigit(text[i]) && !(i==0 && text.length()>1 && (text[i]=='-' || text[i]=='+')))return false;
+        long n=text.toInt();if(n<low || n>high)return false;out=int(n);return true;
+    }
 public:
 
     static String obterMotivoReset() {
@@ -59,47 +66,60 @@ public:
         return String(buffer);
     }    
     
-    static void executar(const String& cmd) {
+    static void executar(const String& incoming) {
+        String cmd=incoming;
+        while(cmd.endsWith("\r") || cmd.endsWith("\n"))cmd.remove(cmd.length()-1);
+        int separator=cmd.indexOf(':');String nome=separator<0?cmd:cmd.substring(0,separator);
+        String arg=separator<0?String(""):cmd.substring(separator+1);nome.trim();nome.toLowerCase();
+        if(nome=="restart")nome="reboot";
+        cmd=nome+(separator<0?String(""):String(":")+arg);
+        String visible=nome=="wifi_add"?String("wifi_add:[credenciais ocultas]"):cmd;
+        if(nome!="lastcmd" && nome!="cmdcount"){lastCommand=visible;commandCount++;}
         Serial.print(F("Comando recebido: "));
-        Serial.println(cmd);
-        oled.adicionarLinha(cmd);
+        Serial.println(visible);
+        oled.adicionarLinha(visible);
         String resp = "";
 
         if (cmd == "help") {
-            resp = "===== COMANDOS ACEITOS =====\n"
-                   "--- DIAGNOSTICO LOCAL ---\n"
-                   "help      : Lista os comandos do sistema\n"
-                   "info      : Exibe status completo do mestre\n"
-                   "status    : Resumo rapido de conexao e heap\n"
-                   "reason    : Exibe o motivo do ultimo reset\n"
-                   "version   : Versao atual do firmware mestre\n"
-                   "build     : Data e hora da compilacao\n"
-                   "cpu       : Modelo, cores e frequencia\n"
-                   "ram       : Heap total e heap livre atual\n"
-                   "flash     : Tamanho e velocidade do chip\n"
-                   "temp      : Temperatura interna da CPU C\n"
-                   "mac       : Endereco MAC fisico do Wi-Fi\n"
-                   "net_info  : Exibe IP, RSSI e SSID atual\n"
-                   "uptime    : Tempo de atividade em segundos\n"
-                   "time      : Hora calculada via NTP\n"
-                   "date      : Data calculada via NTP\n"
-                   "reboot    : Reinicia o ESP32\n"
-                   "heap      : Heap livre em KB\n"
-                   "rssi / ip : Sinal e IP do Wi-Fi\n"
-                   "alive     : Teste de presenca\n"
-                   "--- LED ---\n"
-                   "led_on / led_off\n"
-                   "led_blink:[ms] / led_pisca:[n]:[ms]\n"
-                   "--- CONFIGURACOES ---\n"
-                   "set_fuso: : Altera GMT do NTP (Ex: set_fuso:-3)\n"
-                   "reset_wifi: Limpa a Flash e abre o Portal AP\n"
-                   "========================";
-            network.responderUDP(resp + "\n");
+            network.responderUDP(
+                "Sistema: help info status reason version build reboot alive uptime lastcmd cmdcount health\n"
+                "Hardware: cpu chip_info ram heap heap_min psram flash temp\n"
+                "Rede: net_info net_monitor wifi_status wifi_list wifi_add:SSID|SENHA ssid channel mac rssi ip reset_wifi\n"
+                "Hora: time date ntp_status set_fuso:-3 dst_on dst_off\n"
+                "LED: led_on led_off led_blink:ms led_pisca:pulsos:ms\n"
+                "OLED: tela:0..4 tela:next tela:auto clear_log\n"
+                "wifi_add: cinco perfis circulares, senha vazia = rede aberta; reboot aplica.\n"
+                "reset_wifi limpa redes, fuso e DST; firmware permanece. restart = reboot.\n");
         }
+        else if(nome=="tela") {
+            if(arg=="auto"){oled.paginasAutomaticas();network.responderUDP("Telas automaticas\n");}
+            else if(arg=="next"){oled.avancarPagina();network.responderUDP("Proxima tela\n");}
+            else {int page;if(integer(arg,0,4,page)){oled.selecionarPagina(page);network.responderUDP("Tela selecionada\n");}
+              else network.responderUDP("Use tela:0..4, tela:next ou tela:auto\n");}
+        }
+        else if(cmd=="clear_log"){oled.clearLog();network.responderUDP("Log da tela limpo\n");}
+        else if(cmd=="lastcmd"){network.responderUDP(lastCommand+"\n");}
+        else if(cmd=="cmdcount"){network.responderUDP(String(commandCount)+"\n");}
+        else if(cmd=="net_monitor"){network.responderUDP(network.monitorReport());}
+        else if(cmd=="wifi_list"){network.responderUDP(network.listarSSIDs());}
+        else if(nome=="wifi_add"){
+            int divider=arg.indexOf('|');String error;
+            if(divider<=0)network.responderUDP("Use wifi_add:SSID|SENHA\n");
+            else if(network.adicionarRede(arg.substring(0,divider),arg.substring(divider+1),error))network.responderUDP("Rede salva e verificada. Use reboot para aplicar.\n");
+            else network.responderUDP("Erro: "+error+"\n");
+        }
+        else if(cmd=="ssid"){network.responderUDP(WiFi.SSID()+"\n");}
+        else if(cmd=="channel"){network.responderUDP("Canal: "+String(WiFi.channel())+"\n");}
+        else if(cmd=="wifi_status"){network.responderUDP("WiFi: "+String(network.estaConectado()?"ONLINE":"OFFLINE")+"\nModo: "+String((int)WiFi.getMode())+"\nSSID: "+WiFi.SSID()+"\nIP STA: "+WiFi.localIP().toString()+"\nIP AP: "+WiFi.softAPIP().toString()+"\n");}
+        else if(cmd=="ntp_status"){network.responderUDP(String("Relogio: ")+(ntp.isSincronizado()?"VALIDO":"SEM SINCRONIZACAO")+"\nFuso: "+String(network.obterFusoHorario())+"\nDST: "+String(network.obterDstAtivo()?"ON":"OFF")+"\nRelogio valido nao confirma alcance atual dos servidores NTP.\n");}
+        else if(cmd=="heap_min"){network.responderUDP("Menor heap: "+String(ESP.getMinFreeHeap())+" B\n");}
+        else if(cmd=="psram"){network.responderUDP("PSRAM total: "+String(ESP.getPsramSize())+" B\nLivre: "+String(ESP.getFreePsram())+" B\n");}
+        else if(cmd=="chip_info"){network.responderUDPPrintf("Chip: %s\nRevisao: %u\nNucleos: %u\nSDK: %s\n",ESP.getChipModel(),(unsigned)ESP.getChipRevision(),(unsigned)ESP.getChipCores(),ESP.getSdkVersion());}
+        else if(cmd=="health"){network.responderUDP(String("Diagnostico (somente leitura)\nWiFi: ")+(network.estaConectado()?"ONLINE":"OFFLINE")+"\nOLED: "+String(oled.isPronto()?"OK":"FALHA")+"\nRelogio: "+String(ntp.isSincronizado()?"VALIDO":"SEM SINC")+"\nHeap: "+String(ESP.getFreeHeap())+" B\n");}
         else if (cmd == "info") {
             String dataHoraCompleta; ntp.getDateTime(dataHoraCompleta, 100);
             String dataStr = "Sem Sinc.", horaStr = "--:--:--";
-            if (dataHoraCompleta.length() >= 19) {
+            if (dataHoraCompleta.length() == 19) {
                 dataStr = dataHoraCompleta.substring(0, 10);
                 horaStr = dataHoraCompleta.substring(11, 19);
             }
@@ -108,7 +128,7 @@ public:
 
             resp = "===== DEVICE INFO =====\n"
                 "Hostname: ESP32\n"
-                "Firmware: " + obterVersaoAutomatica() + "\n"
+                "Firmware: 2.0.0 / build " + obterVersaoAutomatica() + "\n"
                 "Build: " + String(__DATE__) + " " + String(__TIME__) + "\n" +
                 "SSID: " + WiFi.SSID() + "\n" +
                 "IP: " + WiFi.localIP().toString() + "\n" +
@@ -132,7 +152,7 @@ public:
             network.responderUDP(resp + "\n");
         }
         else if (cmd == "version") {
-            network.responderUDP("Versao Firmware: " + obterVersaoAutomatica() + "\n");
+            network.responderUDP("Versao Firmware: 2.0.0 / build " + obterVersaoAutomatica() + "\n");
         }
         else if (cmd == "build") {
             network.responderUDP("Build\nData: " + String(__DATE__) + "\nHora Build: " + String(__TIME__) + "\n");
@@ -154,12 +174,12 @@ public:
         else if (cmd == "reset_wifi") {
             network.forcarReinicializacaoComLimpeza();
         }
-        else if (cmd.startsWith("set_fuso")) {
+        else if (nome == "set_fuso") {
             int p = cmd.indexOf(':');
             if (p > 0) {
-                int novoFuso = cmd.substring(p + 1).toInt();
-                if (novoFuso >= -12 && novoFuso <= 14) {
-                    network.salvarFusoHorario(novoFuso);
+                int novoFuso;
+                if (integer(arg,-12,14,novoFuso)) {
+                    if(!network.salvarFusoHorario(novoFuso)){network.responderUDP("Erro ao gravar fuso\n");return;}
                     bool dstAtual = network.obterDstAtivo();
                     
                     // Reconfigura o relógio interno imediatamente com o novo fuso
@@ -176,7 +196,7 @@ public:
             }
         }
         else if (cmd == "dst_on") {
-            network.salvarDstAtivo(true);
+            if(!network.salvarDstAtivo(true)){network.responderUDP("Erro ao gravar DST\n");return;}
             int fusoAtual = network.obterFusoHorario();
             
             // Ativa o Horário de Verão recalculando a string POSIX
@@ -186,7 +206,7 @@ public:
             network.responderUDP("Horario de Verao ativado com sucesso!\n");
         }
         else if (cmd == "dst_off") {
-            network.salvarDstAtivo(false);
+            if(!network.salvarDstAtivo(false)){network.responderUDP("Erro ao gravar DST\n");return;}
             int fusoAtual = network.obterFusoHorario();
             
             // Retorna ao horário padrão
@@ -199,7 +219,7 @@ public:
             String dataHoraCompleta;
             ntp.getDateTime(dataHoraCompleta, 100);
             String hora = "--:--:--";
-            if (dataHoraCompleta.length() >= 19) {
+            if (dataHoraCompleta.length() == 19) {
                 hora = dataHoraCompleta.substring(11);
             }
             int fusoAtual = network.obterFusoHorario();
@@ -213,7 +233,7 @@ public:
             String dataHoraCompleta;
             ntp.getDateTime(dataHoraCompleta, 100);
             String data = "Erro NTP";
-            if (dataHoraCompleta.length() >= 19) {
+            if (dataHoraCompleta.length() == 19) {
                 data = dataHoraCompleta.substring(0, 10);
             }
             oled.adicionarLinha("Data: " + data);
@@ -227,22 +247,15 @@ public:
             hardware.setLed(false);
             network.responderUDP("LED desligado\n");
         }
-        else if (cmd.startsWith("led_pisca")) {
-            int piscadas = 10, tempo = 250;
-            int p1 = cmd.indexOf(':'), p2 = cmd.indexOf(':', p1 + 1);
-            if (p1 > 0 && p2 > 0) {
-                piscadas = cmd.substring(p1 + 1, p2).toInt();
-                tempo = cmd.substring(p2 + 1).toInt();
-            }
-            hardware.piscarSincrono(piscadas, tempo);
-            network.responderUDPPrintf("LED piscou %d vezes com %d ms\n", piscadas, tempo);
+        else if (nome == "led_pisca") {
+            int count=10,interval=250;
+            if(separator>=0){int split=arg.indexOf(':');
+                if(split<0 || !integer(arg.substring(0,split),1,100,count) || !integer(arg.substring(split+1),50,60000,interval)){network.responderUDP("Use led_pisca:1..100:50..60000\n");return;}}
+            hardware.piscarSincrono(count,interval);network.responderUDPPrintf("Sequencia iniciada: %d pulsos, %d ms\n",count,interval);
         }
-        else if (cmd.startsWith("led_blink")) {
-            int intervalo = 500;
-            int p = cmd.indexOf(':');
-            if (p > 0) intervalo = cmd.substring(p + 1).toInt();
-            hardware.iniciarBlinkAsync(intervalo);
-            network.responderUDPPrintf("Blink iniciado (%d ms)\n", intervalo);
+        else if (nome == "led_blink") {
+            int interval=500;if(separator>=0 && !integer(arg,50,60000,interval)){network.responderUDP("Intervalo: 50..60000 ms\n");return;}
+            hardware.iniciarBlinkAsync(interval);network.responderUDPPrintf("Blink continuo: %d ms\n",interval);
         }
         else if (cmd == "temp") {
             float t = hardware.lerTemperatura();
@@ -259,10 +272,10 @@ public:
                 (1.0 - ((float)ESP.getFreeHeap() / (float)ESP.getHeapSize())) * 100.0);
         }
         else if (cmd == "flash") {
-            network.responderUDPPrintf("Flash total: %0.2f MB\nVelocidade Flash: %0.2f MHz\nFlash mode: %u\nSketch Size: %0.2f MB\nEspaço livre Sketch: %0.2f MB\nFlash livre: %0.1f %%\n", ESP.getFlashChipSize() / Config::MB, ESP.getFlashChipSpeed() / 1000000.0, ESP.getFlashChipMode(), ESP.getSketchSize() / Config::MB, ESP.getFreeSketchSpace() / Config::MB, (1.0 - ((float)ESP.getFreeSketchSpace() / (float)ESP.getSketchSize())) * 100.0);
+            network.responderUDPPrintf("Flash: %.2f MB\nVelocidade: %.2f MHz\nSketch: %.2f MB\nEspaco disponivel para sketch: %.2f MB\n",ESP.getFlashChipSize()/Config::MB,ESP.getFlashChipSpeed()/1000000.0,ESP.getSketchSize()/Config::MB,ESP.getFreeSketchSpace()/Config::MB);
         }
         else if (cmd == "uptime") {
-            network.responderUDPPrintf("Uptime: %d s\n", millis() / 1000);    
+            network.responderUDPPrintf("Uptime: %lu s\n", (unsigned long)(millis() / 1000));    
         }
         else if (cmd == "mac") {
             network.responderUDP("MAC: " + WiFi.macAddress() + "\n");

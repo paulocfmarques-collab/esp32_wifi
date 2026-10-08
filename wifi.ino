@@ -4,71 +4,26 @@
 #include "NetworkManager.h"
 #include "CommandHandler.h"
 #include "NTPUtil.h"
-
-// Instanciação corrigida usando o novo tipo estruturado
 DisplayManager oled;
 HardwareController hardware;
 DeviceNetwork network;
 NTPUtil ntp;
-
-DeviceNetwork* DeviceNetwork::instancia = nullptr;
-bool udpInicializado = false;
-
-void setup() {
-    Serial.begin(115200);
-    delay(500); 
-    
-    hardware.begin();
-    oled.begin();
-
-    if (network.conectar()) {
-        Serial.print(F("\nConectado com sucesso! IP obtido: "));
-        Serial.println(WiFi.localIP());
-        oled.adicionarLinha(WiFi.localIP().toString());
-        
-        network.pararPortal();
-        network.iniciarUDP();
-        udpInicializado = true;
-
-        // Recupera os parâmetros da memória e inicializa o NTP completo
-        int fusoSalvo = network.obterFusoHorario();
-        bool dstSalvo = network.obterDstAtivo();
-        ntp.initNTP(fusoSalvo, dstSalvo);
-    }
-    else 
-    {
-        network.iniciarPortal();
-    }
+void setup(){
+ Serial.begin(115200);hardware.begin();oled.begin();network.begin();
+ ntp.configurarRelogio(network.obterFusoHorario(),network.obterDstAtivo());
 }
-
-void loop() {
-    hardware.atualizarBlink();
-
-    network.processarWebServer();
-
-    if (!network.estaConectado()) {
-        udpInicializado = false;
-    } 
-    else if (hardware.verificarBotaoReset()) {
-        network.forcarReinicializacaoComLimpeza();
-    } 
-    else {
-        if (!udpInicializado) {
-            network.iniciarUDP();
-            udpInicializado = true;
-        }
-
-        String comandoRecebido;
-        if (network.checarMensagensUDP(comandoRecebido)) {
-            if (oled.getModoRelogioGrande()) {
-                oled.setModoRelogioGrande(false);
-                oled.adicionarLinha("Retornando aos logs...");
-            }
-            
-            CommandHandler::executar(comandoRecebido);
-        }
-    }
-
-    hardware.atualizarBlink();
-    oled.atualizarTela(ntp);
+void loop(){
+ hardware.atualizarBlink();network.processarWebServer();
+ String command;if(network.checarMensagensUDP(command))CommandHandler::executar(command);
+ static int prior=HIGH,stable=HIGH;static uint32_t changed=0,pressed=0;static bool armed=false;
+ int reading=digitalRead(Config::PIN_BOTAO_RESET);uint32_t now=millis();
+ if(reading!=prior)changed=now;
+ if(now-changed>=50 && reading!=stable){stable=reading;
+  if(stable==LOW){pressed=now;armed=false;}
+  else if(armed || now-pressed>=5000)network.forcarReinicializacaoComLimpeza();
+  else oled.avancarPagina();
+ }
+ prior=reading;
+ if(stable==LOW && !armed && now-pressed>=5000){armed=true;oled.adicionarLinha("Solte para limpar");}
+ oled.atualizarTela(ntp);
 }

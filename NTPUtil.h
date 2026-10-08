@@ -24,21 +24,8 @@ public:
 
     void configurarRelogio(int fuso, bool dstAtivo) {
         char tzString[64];
-        
-        // No padrão POSIX do ESP32, o sinal do fuso padrão é INVERTIDO.
-        // Se o fuso é -3 (Brasília), a string base deve ser "GMT3".
-        int fusoInvertido = -fuso;
-
-        if (dstAtivo) {
-            // Se o horário de verão estiver ATIVO, adicionamos a regra de transição.
-            // Exemplo para fuso -3 com DST: "GMT3GMT-4" (Avança 1 hora em relação ao fuso base)
-            int fusoDstInvertido = fusoInvertido - 1; 
-            snprintf(tzString, sizeof(tzString), "GMT%dGMT%d", fusoInvertido, fusoDstInvertido);
-        } else {
-            // Horário padrão sem regras de DST ativos
-            snprintf(tzString, sizeof(tzString), "GMT%d", fusoInvertido);
-        }
-        
+        int effectiveOffset = fuso + (dstAtivo ? 1 : 0);
+        snprintf(tzString,sizeof(tzString),"UTC%d",-effectiveOffset);
         Serial.printf("[NTP] Aplicando String POSIX: %s\n", tzString);
         
         // Aplica o fuso e aponta para os servidores NTP
@@ -64,7 +51,7 @@ public:
     bool isSincronizado() 
     {
         struct tm timeinfo;
-        return getLocalTime(&timeinfo, 1000);
+        return getLocalTime(&timeinfo, 10);
     }
 };
 

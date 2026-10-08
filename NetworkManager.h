@@ -1,285 +1,220 @@
-#ifndef DEVICE_NETWORK_H
-#define DEVICE_NETWORK_H
-
+#pragma once
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WebServer.h>
 #include <Preferences.h>
+#include <ctype.h>
+#include <stdarg.h>
 #include "Config.h"
 #include "DisplayManager.h"
 #include "HardwareController.h"
+#include "NetworkMonitor.h"
+#include "PortalUi.h"
+static String esc(const String& s){String o;for(size_t i=0;i<s.length();i++){char c=s[i];if(c=='&')o+="&amp;";else if(c=='<')o+="&lt;";else if(c=='>')o+="&gt;";else if(c=='\'')o+="&#39;";else if(c=='"')o+="&quot;";else o+=c;}return o;}
+static String statusBadge(bool ok, const char* yes, const char* no) {
+ return String("<span class='badge ") + (ok ? "ok" : "warn") + "'>" + (ok ? yes : no) + "</span>";
+}
+static String infoRow(const char* title, const String& value) {
+ return "<div class='row'><span>" + String(title) + "</span><strong>" + esc(value) + "</strong></div>";
+}
+static String metric(const char* title, const String& value, const char* hint) {
+ return "<article class='card'><div class='label'>" + String(title) + "</div><div class='value'>" + esc(value) + "</div><small>" + String(hint) + "</small></article>";
+}
 
 class DeviceNetwork {
-private:
-    WebServer server;
-    WiFiUDP udp;
-    Preferences prefs;
-    bool modoAP;
-    static DeviceNetwork* instancia;
+ WebServer server{80};WiFiUDP udp;Preferences prefs;NetworkMonitor telemetry;
+ static const int MAX_REDES=5;
+ String tmpS[5],tmpP[5],ssids[5],passwords[5];
+ bool pendingRestart=false,apActive=false,wasOnline=false;
+ uint32_t restartAt=0,phaseAt=0,retryAt=0;
+ uint8_t phase=0,attempted=0;
+ int lastUsed=-1,slot=-1;
+ void carregarRedes(String names[5],String pass[5],int& idx){
+  idx=-1;if(!prefs.begin("wifi",false))return;
+  String legacy=prefs.getString("ssid","");
+  if(legacy.length() && prefs.getString("s0","").isEmpty()){
+   String oldPass=prefs.getString("senha","");prefs.putString("s0",legacy);prefs.putString("p0",oldPass);
+   if(prefs.getString("s0","")==legacy && prefs.getString("p0","")==oldPass){prefs.remove("ssid");prefs.remove("senha");}
+  }
+  for(int i=0;i<5;i++){names[i]=prefs.getString(("s"+String(i)).c_str(),"");pass[i]=prefs.getString(("p"+String(i)).c_str(),"");}
+  idx=prefs.getInt("idx",-1);if(idx<0 || idx>=5)idx=-1;prefs.end();
+ }
+ void openAP(){if(!apActive){apActive=WiFi.softAP("ESP32_CONFIG");if(apActive)oled.adicionarLinha("AP: 192.168.4.1");}}
+ void nextProfile(){
+  while(attempted<5){int base=lastUsed>=0?lastUsed:0;slot=(base+attempted++)%5;if(ssids[slot].isEmpty())continue;
+   WiFi.disconnect(false,false);WiFi.begin(ssids[slot].c_str(),passwords[slot].c_str());
+   oled.setConnecting(ssids[slot]);oled.adicionarLinha("Buscando: "+ssids[slot]);phaseAt=millis();phase=2;return;
+  }
+  WiFi.disconnect(false,false);oled.setConnecting("");phase=3;retryAt=millis()+Config::WIFI_RETRY_MS;openAP();
+ }
+ void handleInfo(){
+  bool online=estaConectado();String h=portalStart("Informações",false,true);
+  h+=F("<div class='top'><div><div class='eyebrow'>Visão geral</div><h1>Seu ESP32, ao vivo.</h1><p class='muted'>Rede, memória e histórico de conexão.</p></div><a class='button' href='/wifi'>Configurar redes</a></div><div class='grid metrics'>");
+  h+=metric("Wi-Fi",online?String("Conectado"):String("Offline"),"Conexão sem fio");
+  h+=metric("Memória livre",String(ESP.getFreeHeap()/1024)+" KB","Heap disponível");
+  h+=metric("Tempo ligado",String(millis()/60000)+" min","Desde o boot");
+  h+=metric("Quedas",String(telemetry.drops),"Histórico em RAM");h+=F("</div><div class='grid'><article class='card'><h2>Conexão</h2>");
+  h+=infoRow("SSID",online?WiFi.SSID():String("AP ESP32_CONFIG"));h+=infoRow("IP",(online?WiFi.localIP():WiFi.softAPIP()).toString());
+  h+=infoRow("Gateway",online?WiFi.gatewayIP().toString():String("—"));h+=infoRow("RSSI",online?String(WiFi.RSSI())+" dBm":String("—"));h+=infoRow("MAC",WiFi.macAddress());
+  h+=F("</article><article class='card'><h2>Dispositivo</h2>");h+=infoRow("Modelo",ESP.getChipModel());h+=infoRow("Frequência",String(ESP.getCpuFreqMHz())+" MHz");h+=infoRow("Menor heap",String(ESP.getMinFreeHeap()/1024)+" KB");h+=infoRow("Flash",String(ESP.getFlashChipSize()/1024/1024)+" MB");h+=infoRow("Console UDP",String(Config::UDP_PORT));
+  h+=F("</article><article class='card'><h2>Redes salvas</h2>");String names[5],pass[5];int idx;carregarRedes(names,pass,idx);
+  for(int i=0;i<5;i++)h+=infoRow(("Perfil "+String(i+1)).c_str(),names[i].length()?names[i]:String("Disponível"));
+  h+=F("</article><article class='card'><h2>Monitor de rede</h2><pre style='white-space:pre-wrap;font-size:12px'>");h+=esc(monitorReport());h+=F("</pre></article></div><p class='hint section'>Atualização a cada 10 segundos. Ping ao gateway não verifica Internet.</p>");
+  h+=portalEnd();server.send(200,"text/html; charset=utf-8",h);
+ }
+void handleConfig() {
+ String ssids[MAX_REDES], senhas[MAX_REDES]; int idx;
+ carregarRedes(ssids, senhas, idx);
+ String h = portalStart("Redes Wi-Fi", true);
+ h += F("<div class='top'><div><div class='eyebrow'>Conectividade</div><h1>Suas redes Wi-Fi</h1><p class='muted'>Até cinco conexões salvas para o seu dispositivo.</p></div><a class='button secondary' href='/info'>Ver informações</a></div>");
+ h += F("<div class='notice'>Deixe a senha vazia para manter a senha de uma rede com o mesmo SSID. Para remover uma rede, apague o nome. Marque <b>Rede aberta</b> para salvar sem senha.</div><form action='/salvar' method='post' id='networks'><div class='grid'>");
+ for(int i=0;i<MAX_REDES;i++) {
+  String n=String(i); bool active=WiFi.status()==WL_CONNECTED && ssids[i].length() && ssids[i]==WiFi.SSID();
+  h += "<article class='card'><div class='net-title'><div><div class='slot'>PERFIL 0" + String(i+1) + "</div><h2>Rede " + String(i+1) + "</h2></div>";
+  h += active ? statusBadge(true,"Conectada","") : ssids[i].length() ? String("<span class='badge'>Salva</span>") : String("<span class='badge'>Disponível</span>");
+  h += "</div><label class='field' for='ssid"+n+"'>Nome da rede (SSID)</label><input id='ssid"+n+"' name='ssid"+n+"' type='text' maxlength='32' autocomplete='off' placeholder='Ex.: Minha rede' value='"+esc(ssids[i])+"'>";
+  h += "<label class='field' for='senha"+n+"'>Senha</label><div class='password'><input id='senha"+n+"' name='senha"+n+"' type='password' maxlength='64' autocomplete='new-password' placeholder='"+String(ssids[i].length()?"Vazia mantém a senha atual":"8 a 63 caracteres ou chave hexadecimal")+"'><button type='button' aria-controls='senha"+n+"' aria-pressed='false' onclick='togglePassword(this)'>Mostrar</button></div>";
+  h += "<label class='check'><input type='checkbox' name='aberto"+n+"' value='1' onchange='toggleOpen(this)'"+String(ssids[i].length() && senhas[i].isEmpty()?" checked":"")+">Rede aberta (sem senha)</label>";
+  h += "<p class='hint'>"+String(i==idx?"Última rede utilizada pelo dispositivo.":"A senha salva nunca é enviada para esta página.")+"</p></article>";
+ }
+ h += F("</div><div class='actions'><button type='submit' id='save'>Salvar redes e reiniciar</button><p>As configurações são verificadas antes do reinício.</p></div><p id='form-status' role='status' class='muted'></p></form>");
+ h += F(R"JS(<script>
+function togglePassword(b){const i=document.getElementById(b.getAttribute('aria-controls'));const show=i.type==='password';i.type=show?'text':'password';b.textContent=show?'Ocultar':'Mostrar';b.setAttribute('aria-pressed',String(show))}
+function toggleOpen(c){const i=c.closest('article').querySelector('input[name^="senha"]');i.disabled=c.checked;if(c.checked)i.value=''}
+document.querySelectorAll('input[name^="aberto"]').forEach(toggleOpen);
+document.getElementById('networks').addEventListener('submit',function(e){let error='';this.querySelectorAll('input[name^="ssid"]').forEach(i=>{if(new TextEncoder().encode(i.value.trim()).length>32)error='O nome de cada rede deve ter até 32 bytes.'});if(error){e.preventDefault();document.getElementById('form-status').textContent=error;return}document.getElementById('save').disabled=true;document.getElementById('form-status').textContent='Gravando e verificando suas redes…'});
+</script>)JS");
+ h += portalEnd(); server.send(200,"text/html; charset=utf-8",h);
+}
+void handleSalvar() {
+ auto message=[&](int code,const char* title,const String& text,bool success){
+  String h=portalStart(title,true);
+  h+=String("<div class='card message ")+(success?"success":"error")+"'><div class='eyebrow'>Configuração de rede</div><h1>"+String(title)+"</h1><p class='muted'>"+esc(text)+"</p>";
+  h+=success?String("<p>Após o reinício, acesse o novo IP do dispositivo. Se nenhuma rede conectar, use o AP ESP32_P4_CONFIG.</p>"):String("<a class='button' href='/wifi'>Voltar às redes</a>");
+  h+="</div>"+portalEnd();server.send(code,"text/html; charset=utf-8",h);
+ };
+ if(pendingRestart){message(409,"Reinício em andamento","Aguarde o dispositivo reiniciar.",false);return;}
+ String oldS[MAX_REDES],oldP[MAX_REDES];int oldIdx;
+ carregarRedes(oldS,oldP,oldIdx);
+ for(int i=0;i<MAX_REDES;i++) {
+  String n=String(i);
+  bool open=server.hasArg("aberto"+n);
+  if(!server.hasArg("ssid"+n) || (!open && !server.hasArg("senha"+n))){message(400,"Formulário incompleto","Nenhuma configuração foi alterada. Envie todos os cinco perfis.",false);return;}
+  String ssid=server.arg("ssid"+n),pass=server.arg("senha"+n);ssid.trim();
+  if(ssid.length()>32){message(400,"Nome de rede inválido","O SSID deve ter até 32 bytes.",false);return;}
+  if(ssid.isEmpty()){tmpS[i]="";tmpP[i]="";continue;}
+  if(open)pass="";else if(pass.isEmpty() && ssid==oldS[i])pass=oldP[i];
+  bool hex=pass.length()==64;
+  if(hex)for(size_t j=0;j<pass.length();j++)if(!isxdigit((unsigned char)pass[j])){hex=false;break;}
+  if(!pass.isEmpty() && !(pass.length()>=8 && pass.length()<=63) && !hex){message(400,"Senha inválida","Use de 8 a 63 bytes ou uma chave hexadecimal de 64 caracteres.",false);return;}
+  if(pass.isEmpty() && !open && (ssid!=oldS[i] || !oldP[i].isEmpty())){message(400,"Informe a senha","Para uma rede sem senha, marque Rede aberta.",false);return;}
+  tmpS[i]=ssid;tmpP[i]=pass;
+ }
+ if(!prefs.begin("wifi",false)){message(500,"Falha ao salvar","Não foi possível abrir as configurações. Tente novamente.",false);return;}
+ bool ok=true;
+ for(int i=0;i<MAX_REDES;i++) {
+  String sk="s"+String(i),pk="p"+String(i);
+  prefs.putString(sk.c_str(),tmpS[i]);prefs.putString(pk.c_str(),tmpP[i]);
+  ok=(prefs.isKey(sk.c_str()) && prefs.isKey(pk.c_str()) && prefs.getString(sk.c_str(),"!missing!")==tmpS[i] && prefs.getString(pk.c_str(),"!missing!")==tmpP[i]) && ok;
+ }
+ prefs.putInt("idx",-1);ok=(prefs.getInt("idx",-2)==-1) && ok;
+ if(!ok) {
+  bool restored=true;
+  for(int i=0;i<MAX_REDES;i++) {
+   String sk="s"+String(i),pk="p"+String(i);
+   prefs.putString(sk.c_str(),oldS[i]);prefs.putString(pk.c_str(),oldP[i]);
+   restored=(prefs.isKey(sk.c_str()) && prefs.isKey(pk.c_str()) && prefs.getString(sk.c_str(),"!missing!")==oldS[i] && prefs.getString(pk.c_str(),"!missing!")==oldP[i]) && restored;
+  }
+  prefs.putInt("idx",oldIdx);restored=(prefs.getInt("idx",-2)==oldIdx) && restored;prefs.end();
+  message(500,"Falha na gravação",restored?String("As configurações anteriores foram restauradas. Tente novamente."):String("Não foi possível restaurar todos os dados. Revise os perfis antes de reiniciar."),false);return;
+ }
+ prefs.end();
+ message(200,"Redes salvas!","Os cinco perfis foram gravados e verificados. O dispositivo vai reiniciar em instantes.",true);
+ restartAt=millis()+1500;pendingRestart=true;
+}
 
-    static const int MAX_REDES = 5;
-
-    static String esc(String s) {
-        s.replace("&", "&amp;"); s.replace("'", "&#39;"); s.replace("<", "&lt;");
-        return s;
-    }
-
-    static String cabecalho(const char* titulo) {
-        return String("<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
-               "<meta name='viewport' content='width=device-width, initial-scale=1.0'><title>") + titulo +
-               "</title><style>body{font-family:Arial;margin:20px;background:#1a1a1a;color:#fff;text-align:center}"
-               ".c{background:#2d2d2d;max-width:360px;margin:auto;padding:20px;border-radius:12px;text-align:left}"
-               "input{width:100%;padding:9px;margin:5px 0;box-sizing:border-box;border-radius:6px;border:1px solid #444;background:#222;color:#fff}"
-               "input[type=submit]{background:#0a84ff;border:none;font-weight:bold;cursor:pointer}"
-               "a{color:#0a84ff}</style></head><body><div class='c'>";
-    }
-
-    static void handleConfig() {
-        if (!instancia) return;
-        DeviceNetwork& n = *instancia;
-        n.prefs.begin("wifi", true);
-        String h = cabecalho("ESP32 - Configuracao");
-        h += "<h2>ESP32 WiFi</h2><p>Ate 5 redes (SSID vazio = remover; senha vazia mantem a atual)</p>"
-             "<form action='/salvar' method='POST'>";
-        for (int i = 0; i < MAX_REDES; i++) {
-            String s = n.prefs.getString(("s" + String(i)).c_str(), "");
-            h += "<b>Rede " + String(i + 1) + "</b><input name='ssid" + String(i) + "' value='" + esc(s) +
-                 "' placeholder='SSID'><input type='password' name='senha" + String(i) + "' placeholder='Senha'>";
-        }
-        n.prefs.end();
-        h += "<input type='submit' value='Salvar e Reiniciar'></form></div></body></html>";
-        n.server.send(200, "text/html", h);
-    }
-
-    static void handleInfo() {
-        if (!instancia) return;
-        DeviceNetwork& n = *instancia;
-        unsigned long s = millis() / 1000;
-        char up[32];
-        snprintf(up, sizeof(up), "%02luh %02lum %02lus", s / 3600, (s % 3600) / 60, s % 60);
-        bool ok = WiFi.status() == WL_CONNECTED;
-        String h = cabecalho("ESP32 - Informacoes");
-        h += "<h2>ESP32 - Informacoes</h2>";
-        h += "<p>Chip: " + String(ESP.getChipModel()) + " (" + String(ESP.getChipCores()) + " nucleos, " + String(ESP.getCpuFreqMHz()) + " MHz)</p>";
-        h += "<p>Wi-Fi: " + (ok ? esc(WiFi.SSID()) : String("Desconectado")) + "</p>";
-        h += "<p>IP: " + (ok ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + "</p>";
-        h += "<p>RSSI: " + String(ok ? WiFi.RSSI() : 0) + " dBm</p>";
-        h += "<p>MAC: " + WiFi.macAddress() + "</p>";
-        h += "<p>RAM livre: " + String(ESP.getFreeHeap()) + " bytes</p>";
-        h += "<p>Uptime: " + String(up) + "</p>";
-        h += "<p>Redes salvas:</p><ul>";
-        n.prefs.begin("wifi", true);
-        for (int i = 0; i < MAX_REDES; i++) {
-            String ss = n.prefs.getString(("s" + String(i)).c_str(), "");
-            if (ss.length()) h += "<li>" + esc(ss) + "</li>";
-        }
-        n.prefs.end();
-        h += "</ul><p><a href='/wifi'>Configurar redes</a></p></div></body></html>";
-        n.server.send(200, "text/html", h);
-    }
-
-    static void handleRoot() {
-        if (!instancia) return;
-        if (instancia->modoAP) handleConfig(); else handleInfo();
-    }
-
-    static void handleSalvar() {
-        if (!instancia) return;
-        DeviceNetwork& n = *instancia;
-        n.prefs.begin("wifi", false);
-        for (int i = 0; i < MAX_REDES; i++) {
-            String k = String(i);
-            String ssid = n.server.arg("ssid" + k);
-            String senha = n.server.arg("senha" + k);
-            ssid.trim();
-            if (ssid.length() == 0) {
-                n.prefs.remove(("s" + k).c_str());
-                n.prefs.remove(("p" + k).c_str());
-            } else {
-                if (senha.length() == 0 && n.prefs.getString(("s" + k).c_str(), "") == ssid)
-                    senha = n.prefs.getString(("p" + k).c_str(), "");
-                n.prefs.putString(("s" + k).c_str(), ssid);
-                n.prefs.putString(("p" + k).c_str(), senha);
-            }
-        }
-        n.prefs.remove("ssid");
-        n.prefs.remove("senha");
-        n.prefs.putInt("idx", -1);
-        n.prefs.end();
-        n.server.send(200, "text/html", "<h2>Configuracao salva! O ESP32 esta reiniciando...</h2>");
-        delay(2000);
-        ESP.restart();
-    }
-
-    void configurarRotas() {
-        server.on("/", HTTP_GET, handleRoot);
-        server.on("/info", HTTP_GET, handleInfo);
-        server.on("/wifi", HTTP_GET, handleConfig);
-        server.on("/salvar", HTTP_POST, handleSalvar);
-    }
-
-    bool tentarRede(const String& ssid, const String& senha) {
-        WiFi.disconnect(true);
-        delay(100);
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid.c_str(), senha.c_str());
-        Serial.print(F("Conectando a rede: ")); Serial.println(ssid);
-        oled.adicionarLinha("Conectando a:");
-        oled.adicionarLinha(ssid);
-        for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
-            delay(500);
-            Serial.print(".");
-            hardware.alternarLed();
-        }
-        hardware.setLed(false);
-        return WiFi.status() == WL_CONNECTED;
-    }
 
 public:
-    DeviceNetwork() : server(80), modoAP(false) {
-        instancia = this;
-    }
+ void begin(){
+  carregarRedes(ssids,passwords,lastUsed);WiFi.persistent(false);WiFi.mode(WIFI_AP_STA);WiFi.setAutoReconnect(false);openAP();
+  server.on("/",HTTP_GET,[this](){if(estaConectado())handleInfo();else handleConfig();});
+  server.on("/info",HTTP_GET,[this](){handleInfo();});server.on("/wifi",HTTP_GET,[this](){handleConfig();});
+  server.on("/salvar",HTTP_POST,[this](){handleSalvar();});server.begin();iniciarUDP();oled.setMonitor(&telemetry);
+ }
+ bool estaConectado()const{return WiFi.status()==WL_CONNECTED;}
+ const NetworkMonitor& monitor()const{return telemetry;}
+ void processarWebServer(){
+  uint32_t now=millis();telemetry.update();server.handleClient();
+  if(pendingRestart){if(int32_t(now-restartAt)>=0)ESP.restart();return;}
+  if(estaConectado()){
+   if(!wasOnline){wasOnline=true;phase=0;oled.setConnecting("");oled.adicionarLinha("IP: "+WiFi.localIP().toString());
+    if(slot>=0 && prefs.begin("wifi",false)){prefs.putInt("idx",slot);prefs.end();lastUsed=slot;}
+    if(apActive){WiFi.softAPdisconnect(false);apActive=false;}
+   }return;
+  }
+  if(wasOnline){wasOnline=false;phase=0;oled.adicionarLinha("WiFi desconectado");openAP();}
+  if(phase==0){attempted=0;oled.adicionarLinha("Buscando redes...");phaseAt=now;WiFi.scanNetworks(true,true);phase=1;}
+  else if(phase==1){int scan=WiFi.scanComplete();if(scan==WIFI_SCAN_RUNNING && now-phaseAt<8000)return;WiFi.scanDelete();nextProfile();}
+  else if(phase==2 && now-phaseAt>=Config::WIFI_ATTEMPT_MS)nextProfile();
+  else if(phase==3 && int32_t(now-retryAt)>=0)phase=0;
+ }
+ int obterFusoHorario(){if(!prefs.begin("wifi",true))return Config::FUSO_PADRAO;int f=prefs.getInt("fuso",Config::FUSO_PADRAO);prefs.end();return f;}
+ bool obterDstAtivo(){if(!prefs.begin("wifi",true))return false;bool b=prefs.getBool("dst",false);prefs.end();return b;}
+ bool salvarFusoHorario(int v){if(!prefs.begin("wifi",false))return false;prefs.putInt("fuso",v);bool ok=prefs.getInt("fuso",99)==v;prefs.end();return ok;}
+ bool salvarDstAtivo(bool b){if(!prefs.begin("wifi",false))return false;prefs.putBool("dst",b);bool ok=prefs.isKey("dst") && prefs.getBool("dst",!b)==b;prefs.end();return ok;}
+ void iniciarUDP(){udp.begin(Config::UDP_PORT);}
+ void iniciarPortal(){openAP();}
+ void pararPortal(){if(apActive){WiFi.softAPdisconnect(false);apActive=false;}}
+ void responderUDP(const String& s){if(!udp.remoteIP())return;udp.beginPacket(udp.remoteIP(),udp.remotePort());udp.print(s);udp.endPacket();}
+ void responderUDPPrintf(const char* format,...){char buf[768];va_list args;va_start(args,format);vsnprintf(buf,sizeof(buf),format,args);va_end(args);responderUDP(String(buf));}
+ bool checarMensagensUDP(String& s){int n=udp.parsePacket();if(!n)return false;char buf[256];
+  if(n>=int(sizeof(buf))){while(udp.available())udp.read(buf,sizeof(buf));responderUDP("Erro: maximo 255 bytes\n");return false;}
+  int len=udp.read(buf,sizeof(buf)-1);if(len<=0)return false;buf[len]=0;s=String(buf);return true;
+ }
+ void forcarReinicializacaoComLimpeza(){
+  if(!prefs.begin("wifi",false)){responderUDP("Erro ao abrir configuracoes\n");return;}
+  bool ok=prefs.clear();prefs.end();if(!ok){responderUDP("Erro ao limpar configuracoes\n");return;}
+  responderUDP("Redes e configuracoes limpas. Reiniciando...\n");oled.adicionarLinha("Configuracao limpa");hardware.setLed(false);pendingRestart=true;restartAt=millis()+1000;
+ }
+ String monitorReport()const{
+  const auto& m=telemetry;String s=m.connected?"WiFi ONLINE\n":"WiFi OFFLINE\n";
+  s+="Quedas: "+String(m.drops)+"\nOffline: "+String((unsigned long)m.offlineSeconds())+" s\nGateway: ";
+  s+=!m.connected?String("sem rede"):!m.hasResult?String("aguardando"):m.replied?String(m.rtt)+" ms":String("sem resposta");
+  if(m.hasResult)s+=" | ha "+String(uint32_t(millis()-m.measuredAt)/1000)+" s";
+  if(m.received)s+="\nRTT min/medio/max: "+String(m.minimum)+"/"+String((unsigned long)(m.totalRtt/m.received))+"/"+String(m.maximum)+" ms";
+  s+="\nPings: "+String(m.attempts)+" | Sem resposta: "+String(m.failures)+"\n";
+  for(const auto& e:m.events)if(e.length())s+=e+"\n";return s;
+ }
+String listarSSIDs() {
+ String ssids[MAX_REDES],senhas[MAX_REDES];int idx;
+ carregarRedes(ssids,senhas,idx);String result;
+ for(int i=0;i<MAX_REDES;i++)if(ssids[i].length())result+=ssids[i]+"\n";
+ return result.length()?result:String("\n");
+}
+bool adicionarRede(const String& ssid,const String& senha,String& erro) {
+ if(pendingRestart){erro="Reinicio em andamento";return false;}
+ if(ssid.isEmpty() || ssid.length()>32 || ssid.indexOf('\n')>=0 || ssid.indexOf('\r')>=0){erro="SSID deve conter de 1 a 32 bytes";return false;}
+ bool hex=senha.length()==64;
+ if(hex)for(size_t i=0;i<senha.length();i++)if(!isxdigit((unsigned char)senha[i])){hex=false;break;}
+ if(!senha.isEmpty() && !(senha.length()>=8 && senha.length()<=63) && !hex){erro="Senha: 8 a 63 bytes ou 64 caracteres hexadecimais";return false;}
+ String ssids[MAX_REDES],senhas[MAX_REDES];int idx;
+ carregarRedes(ssids,senhas,idx);
+ if(!prefs.begin("wifi",false)){erro="Falha ao abrir configuracoes";return false;}
+ uint8_t next=prefs.getUChar("next",0);if(next>=MAX_REDES)next=0;
+ int slot=-1;for(int i=0;i<MAX_REDES;i++)if(ssids[i]==ssid){slot=i;break;}
+ bool existing=slot>=0;if(!existing)slot=next;
+ String sk="s"+String(slot),pk="p"+String(slot);
+ uint8_t newNext=existing?next:uint8_t((slot+1)%MAX_REDES);
+ prefs.putString(sk.c_str(),ssid);prefs.putString(pk.c_str(),senha);prefs.putUChar("next",newNext);
+ bool ok=prefs.isKey(sk.c_str()) && prefs.isKey(pk.c_str()) &&
+   prefs.getString(sk.c_str())==ssid && prefs.getString(pk.c_str())==senha && prefs.getUChar("next",255)==newNext;
+ if(!ok){
+  prefs.putString(sk.c_str(),ssids[slot]);prefs.putString(pk.c_str(),senhas[slot]);prefs.putUChar("next",next);
+  bool restored=prefs.isKey(sk.c_str()) && prefs.isKey(pk.c_str()) && prefs.getString(sk.c_str())==ssids[slot] && prefs.getString(pk.c_str())==senhas[slot] && prefs.getUChar("next",255)==next;
+  erro=restored?"Falha ao gravar; perfil anterior restaurado":"Falha ao gravar e restaurar; revise os perfis";
+ }
+ prefs.end();return ok;
+}
 
-    bool conectar() {
-        prefs.begin("wifi", false);
-        String antigo = prefs.getString("ssid", "");
-        if (antigo.length() && prefs.getString("s0", "").length() == 0) {
-            prefs.putString("s0", antigo);
-            prefs.putString("p0", prefs.getString("senha", ""));
-        }
-        String ssids[MAX_REDES], senhas[MAX_REDES];
-        int total = 0;
-        for (int i = 0; i < MAX_REDES; i++) {
-            ssids[i] = prefs.getString(("s" + String(i)).c_str(), "");
-            senhas[i] = prefs.getString(("p" + String(i)).c_str(), "");
-            if (ssids[i].length()) total++;
-        }
-        int ultimo = prefs.getInt("idx", -1);
-        prefs.end();
-
-        modoAP = true;
-        if (total == 0) return false;
-
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect();
-        oled.adicionarLinha("Buscando redes...");
-        int n = WiFi.scanNetworks();
-        for (int k = 1; k <= MAX_REDES && WiFi.status() != WL_CONNECTED; k++) {
-            int i = (ultimo + k) % MAX_REDES;
-            if (ssids[i].length() == 0) continue;
-            bool visivel = false;
-            for (int r = 0; r < n; r++) if (WiFi.SSID(r) == ssids[i]) { visivel = true; break; }
-            if (!visivel) continue;
-            if (tentarRede(ssids[i], senhas[i])) {
-                prefs.begin("wifi", false);
-                prefs.putInt("idx", i);
-                prefs.end();
-            }
-        }
-        WiFi.scanDelete();
-
-        modoAP = (WiFi.status() != WL_CONNECTED);
-        if (!modoAP) {
-            configurarRotas();
-            server.begin();
-        }
-        return !modoAP;
-    }
-
-    int obterFusoHorario() {
-        prefs.begin("wifi", true);
-        int fuso = prefs.getInt("fuso", Config::FUSO_PADRAO);
-        prefs.end();
-        return fuso;
-    }
-
-    void salvarFusoHorario(int novoFuso) {
-        prefs.begin("wifi", false);
-        prefs.putInt("fuso", novoFuso);
-        prefs.end();
-    }
-
-    bool obterDstAtivo() {
-        prefs.begin("wifi", true);
-        bool dst = prefs.getBool("dst", false);
-        prefs.end();
-        return dst;
-    }
-
-    void salvarDstAtivo(bool ativo) {
-        prefs.begin("wifi", false);
-        prefs.putBool("dst", ativo);
-        prefs.end();
-    }
-
-    void iniciarPortal() {
-        modoAP = true;
-        WiFi.mode(WIFI_AP);
-        WiFi.softAP("ESP32_CONFIG");
-        
-        configurarRotas();
-        server.begin();
-    }
-
-    void iniciarUDP() {
-        udp.begin(Config::UDP_PORT);
-    }
-
-    void pararPortal() {
-        WiFi.softAPdisconnect(true);
-    }
-
-    void responderUDP(const String& resposta) {
-        udp.beginPacket(udp.remoteIP(), udp.remotePort());
-        udp.print(resposta);
-        udp.endPacket();
-    }
-
-    void responderUDPPrintf(const char* formato, ...) {
-        char buffer[256];
-        va_list args;
-        va_start(args, formato);
-        vsnprintf(buffer, sizeof(buffer), formato, args);
-        va_end(args);
-
-        udp.beginPacket(udp.remoteIP(), udp.remotePort());
-        udp.print(buffer);
-        udp.endPacket();
-    }
-
-    bool checarMensagensUDP(String& msgOut) {
-        if (modoAP) return false;
-
-        int packetSize = udp.parsePacket();
-        if (packetSize) {
-            char buffer[256];
-            int len = udp.read(buffer, sizeof(buffer) - 1);
-            if (len > 0) {
-                buffer[len] = '\0';
-                msgOut = String(buffer);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void processarWebServer() {
-        server.handleClient();
-    }
-
-    bool estaConectado() {
-        return WiFi.status() == WL_CONNECTED;
-    }
-
-    void forcarReinicializacaoComLimpeza() {
-        prefs.begin("wifi", false);
-        prefs.clear();
-        prefs.end();
-        hardware.piscarSincrono(10, 100);
-        ESP.restart();
-    }
 };
-
 extern DeviceNetwork network;
-
-#endif
