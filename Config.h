@@ -22,6 +22,10 @@ namespace Config {
 
     constexpr const float MB = 1024.0 * 1024.0; // Constante para conversão de bytes para megabytes
     constexpr const float KB = 1024.0; // Constante para conversão de bytes para kilobytes
+
+    constexpr const char* OTA_HOSTNAME = "ESP32-Network-Hub";
+    constexpr const char* OTA_PASSWORD = ""; // Deixe vazio ou coloque uma senha para proteger o upload
+    constexpr uint32_t OLED_TIMEOUT_MS = 180000;
 }
 
 
