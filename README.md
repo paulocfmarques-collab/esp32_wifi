@@ -7,11 +7,38 @@
 
 Firmware for ESP32 boards with a local Wi-Fi setup portal, SSD1306 OLED display, network monitoring, and serial/UDP commands.
 
+> [!IMPORTANT]
+> This project is designed to run entirely locally, without relying on external web services, CDNs, or remote assets.
+
+## Screenshots
+
+> Add screenshots or short GIFs here to showcase the portal, OLED pages, and network status views.
+>
+> Suggested assets:
+> - `docs/images/portal.png`
+> - `docs/images/oled-home.png`
+> - `docs/images/wifi-settings.gif`
+
+| Portal | OLED Status | Network Monitor |
+|---|---|---|
+| _Screenshot placeholder_ | _Screenshot placeholder_ | _Screenshot placeholder_ |
+
+## Quick start
+
+1. Open `wifi/wifi.ino` in the Arduino IDE.
+2. Keep the `wifi` folder and supporting source files together.
+3. Select your ESP32 board and the same options used by the original project.
+4. Install the required libraries:
+   - Arduino-ESP32 3.x
+   - Adafruit SSD1306
+   - Adafruit GFX
+5. Compile, upload, and open the Serial Monitor at 115200 baud.
+6. Connect to the **ESP32_CONFIG** access point if the device starts in configuration mode.
+7. Open `/wifi` to save up to five Wi-Fi profiles.
+
 ## Overview
 
 ESP32 Wi-Fi / OLED provides a self-contained Wi-Fi configuration experience for ESP32 devices. It stores up to five network profiles, offers automatic reconnection, exposes a local portal for status and configuration, and keeps the OLED display and diagnostics active during recovery attempts.
-
-The project is designed to run entirely locally, without relying on external web services, CDNs, or remote assets.
 
 ## Key features
 
@@ -40,14 +67,6 @@ The project is designed to run entirely locally, without relying on external web
 - Adafruit SSD1306
 - Adafruit GFX
 - Native `ping/ping_sock.h` support from ESP-IDF
-
-## Installation
-
-1. Download or clone the repository.
-2. Open `wifi/wifi.ino` in the Arduino IDE.
-3. Keep the `wifi` folder and supporting source files together.
-4. Select the target board, port, and the same options used by the original project.
-5. Compile, upload, and open the Serial Monitor at 115200 baud.
 
 ## First boot and portal access
 
