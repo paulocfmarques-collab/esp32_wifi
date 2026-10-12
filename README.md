@@ -10,6 +10,25 @@ Firmware for ESP32 boards with a local Wi-Fi setup portal, SSD1306 OLED display,
 > [!IMPORTANT]
 > This project is designed to run entirely locally, without relying on external web services, CDNs, or remote assets.
 
+## Table of contents
+
+- [Overview](#overview)
+- [Screenshots](#screenshots)
+- [Quick start](#quick-start)
+- [Architecture](#architecture)
+- [Key features](#key-features)
+- [Hardware requirements](#hardware-requirements)
+- [Dependencies](#dependencies)
+- [First boot and portal access](#first-boot-and-portal-access)
+- [Portal endpoints](#portal-endpoints)
+- [Network discovery and recovery](#network-discovery-and-recovery)
+- [OLED pages and button behavior](#oled-pages-and-button-behavior)
+- [Network monitoring and time](#network-monitoring-and-time)
+- [Commands](#commands)
+- [Project structure](#project-structure)
+- [Notes](#notes)
+- [References](#references)
+
 ## Screenshots
 
 > Add screenshots or short GIFs here to showcase the portal, OLED pages, and network status views.
@@ -35,6 +54,19 @@ Firmware for ESP32 boards with a local Wi-Fi setup portal, SSD1306 OLED display,
 5. Compile, upload, and open the Serial Monitor at 115200 baud.
 6. Connect to the **ESP32_CONFIG** access point if the device starts in configuration mode.
 7. Open `/wifi` to save up to five Wi-Fi profiles.
+
+## Architecture
+
+The firmware is organized around a small set of continuously running responsibilities:
+
+- **Wi-Fi manager**: loads saved profiles, scans for known networks, connects, and triggers recovery when the link drops.
+- **Portal server**: serves the local configuration and information pages directly from the device.
+- **OLED renderer**: refreshes the SSD1306 display with status pages and diagnostic information.
+- **Network monitor**: pings the gateway periodically and stores recent results in RAM.
+- **Command handlers**: process serial and UDP commands for network control, LED behavior, display navigation, and diagnostics.
+- **Input handling**: reads the BOOT button for short-press navigation and long-press cleanup actions.
+
+These components are designed to cooperate without blocking the main loop, so the portal, display, commands, and recovery logic remain responsive even while the device is reconnecting.
 
 ## Overview
 
@@ -133,6 +165,18 @@ The firmware includes five main pages:
 ## Commands
 
 The full command list is available in `COMANDOS.md` and through the `help` command.
+
+## Project structure
+
+```text
+wifi/
+├── wifi.ino            # Main Arduino sketch
+├── *.cpp               # Supporting implementation files
+├── *.h                 # Shared headers and declarations
+├── COMANDOS.md         # Command reference
+├── CHANGELOG.md        # Release history
+└── README.md           # Project documentation
+```
 
 ## Notes
 
