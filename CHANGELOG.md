@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1
+
+- README revisto e expandido com visão geral, requisitos, instalação e fluxo inicial.
+- Estrutura da documentação tornada mais clara para instalação e uso do portal.
+- Secções de funcionalidades reorganizadas para facilitar leitura e manutenção.
+- Changelog complementado com uma entrada de manutenção documental.
+
 ## 2.0.0
 
 - Inventário geral de comandos sincronizado com os handlers de rede, diagnóstico,

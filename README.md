@@ -1,110 +1,113 @@
-# ESP32 Wi-Fi / OLED — versão 2.0.0
+# ESP32 Wi-Fi / OLED
 
-Atualização do projeto Wi-Fi com OLED SSD1306 128×64. Inclui portal moderno, cinco
-redes persistentes, reconexão em segundo plano, monitor de rede, cinco telas e
-comandos padronizados. Os pinos do projeto original foram mantidos.
+Firmware para ESP32 com portal local de configuração Wi-Fi, display OLED SSD1306 128x64, monitor de rede e comandos via serial/UDP.
 
-## Hardware e dependências
+## Destaques
+
+- Portal web local para configurar até cinco redes Wi-Fi
+- Reconexão automática e AP de fallback quando necessário
+- OLED com múltiplas telas de status e diagnóstico
+- Monitor ICMP do gateway com histórico em memória
+- Comandos para rede, LED, telas, logs e manutenção
+- Sem dependência de serviços externos no portal
+
+## Requisitos de hardware
 
 | Recurso | Configuração |
 |---|---|
+| Placa | ESP32 compatível com Arduino-ESP32 3.x |
 | LED | GPIO 2 |
-| Botão / BOOT | GPIO 0, ligado ao GND, INPUT_PULLUP |
+| Botão / BOOT | GPIO 0, ligado ao GND, com `INPUT_PULLUP` |
 | OLED SDA / SCL | GPIO 21 / GPIO 22 |
-| Display | SSD1306 128×64, I2C 0x3C, monocromático |
+| Display | SSD1306 128x64, I2C 0x3C, monocromático |
 | UDP | Porta 4210 |
 | Fuso padrão | UTC -3 |
 
-Use a mesma seleção de placa ESP32 da aplicação original e Arduino-ESP32 3.x,
-Adafruit SSD1306 e Adafruit GFX. O ping usa `ping/ping_sock.h` nativo do ESP-IDF.
-Não foram adicionados periféricos Ethernet ou cartão SD.
+## Dependências
+
+- Arduino-ESP32 3.x
+- Adafruit SSD1306
+- Adafruit GFX
+- suporte nativo de `ping/ping_sock.h` do ESP-IDF
 
 ## Instalação
 
-1. Extraia o ZIP mantendo a pasta `wifi` e seus arquivos juntos.
+1. Baixe ou clone o repositório.
 2. Abra `wifi/wifi.ino` no Arduino IDE.
-3. Selecione sua placa, porta e as opções utilizadas no projeto original.
-4. Compile e grave.
-5. Abra a Serial a 115200 baud para acompanhar a inicialização.
+3. Mantenha a pasta `wifi` e os arquivos auxiliares juntos.
+4. Selecione a placa, a porta e as opções usadas no projeto original.
+5. Compile, grave e abra o Monitor Serial em 115200 baud.
 
-O arquivo `.cpp` do monitor também deve ficar junto do sketch.
+## Primeiro arranque
 
-## Primeiro acesso e portal
+Ao iniciar sem ligação ativa, o ESP32 cria o AP **ESP32_CONFIG** em **192.168.4.1** enquanto tenta ligar às redes guardadas.
 
-Ao iniciar sem conexão, o ESP32 disponibiliza o AP **ESP32_CONFIG**, com endereço
-**192.168.4.1**, enquanto procura as redes salvas. Abra `/wifi` para cadastrar os
-cinco perfis. Após conectar, o AP é desligado e o OLED mostra o IP obtido; acesse
-esse IP para usar o portal. Uma queda reabre o AP durante as novas tentativas.
+- Aceda a `/wifi` para configurar até cinco perfis.
+- Após ligação bem-sucedida, o AP é desligado.
+- O OLED mostra o IP atribuído e esse IP passa a servir o portal.
+- Se a ligação cair, o AP é reativado durante novas tentativas.
 
-- `/info`: rede, IP, RSSI, memória, tempo ligado e monitor de conexão. Atualiza
-  a cada dez segundos.
-- `/wifi`: cinco perfis, indicação da rede conectada, mostrar/ocultar senha e
-  seleção explícita de rede aberta.
+## Funcionalidades do portal
 
-O portal funciona sem Internet e não busca fontes, estilos ou scripts externos.
-Senhas salvas nunca são enviadas ao navegador. Senha vazia mantém a anterior
-apenas quando o SSID não muda; marque Rede aberta para gravar sem senha.
-Apagar o SSID remove o perfil.
+- `/info`: mostra rede, IP, RSSI, memória, tempo ligado e estado do monitor de conexão.
+- `/wifi`: edição de cinco perfis, indicação da rede ativa, mostrar/ocultar senha e suporte a rede aberta.
 
-O servidor valida todos os perfis, verifica a gravação por leitura e só confirma
-sucesso antes de agendar o reboot. Em falha, tenta restaurar os dados anteriores
-e informa o resultado. A gravação de vários campos não é atômica contra falta de
-energia. Credenciais legadas são migradas para o perfil 1 quando possível.
+Regras importantes:
 
-## Busca e recuperação de rede
+- O portal funciona sem Internet.
+- Não usa fontes, estilos ou scripts externos.
+- Senhas salvas nunca são enviadas ao navegador.
+- Se o SSID não mudar, uma senha vazia mantém a anterior.
+- Marque **Rede aberta** para gravar sem senha.
+- Apagar o SSID remove o perfil.
 
-A varredura é assíncrona. Após a varredura, os perfis são tentados sequencialmente,
-começando pela última rede utilizada, até dez segundos por perfil. Todos os perfis
-salvos são tentados, incluindo SSIDs ocultos. Se nenhum conecta, o AP permanece
-disponível e um novo ciclo começa após trinta segundos. O loop continua atendendo
-portal, comandos, LED, botão e OLED durante as tentativas. As tentativas mostram o
-SSID no console do OLED e na página de rede.
+## Procura e recuperação de rede
 
-`wifi_add` salva perfis na lista circular; consulte `COMANDOS.md` para detalhes.
-O UDP também funciona no AP. Nomes de comandos não diferenciam maiúsculas e
-minúsculas; argumentos preservam caixa. Pacotes acima de 255 bytes são rejeitados.
+- A varredura é assíncrona.
+- Após a varredura, os perfis são testados sequencialmente.
+- A última rede utilizada é tentada primeiro.
+- Cada perfil pode ficar até dez segundos em tentativa.
+- SSIDs ocultos também são suportados.
+- Se nenhuma rede ligar, o AP permanece disponível e um novo ciclo começa após trinta segundos.
 
-## Telas e botão
+## OLED e botão
 
-Cinco páginas: relógio, rede Wi-Fi, sistema, ping ao gateway e histórico.
-Atualização de um segundo, rotação de oito segundos e desenho em buffer do OLED.
-O display é monocromático: barras mudam de quantidade, não de cor.
+O firmware inclui cinco páginas principais:
 
-Toque curto em GPIO 0 avança a tela. Segure cinco segundos e solte para limpar
-redes, cursor, fuso e DST e reiniciar, preservando o firmware. O loop continua
-funcionando enquanto o botão estiver pressionado. BOOT pressionado durante reset
-ou energização pode acionar o modo de gravação da placa; EN continua sendo reset.
+1. relógio
+2. rede Wi-Fi
+3. sistema
+4. ping ao gateway
+5. histórico
 
-`tela:0..4`, `tela:next`, `tela:auto` e `clear_log` controlam a exibição.
-
-Após três minutos sem interação, um relógio pequeno se move pela tela, mantendo
-o OLED ligado. Toque curto no botão sai da proteção e avança a página; comandos
-também encerram a proteção e renovam o tempo de inatividade. Logs automáticos de
-rede não renovam esse tempo. A leitura do botão continua durante a proteção.
+- Atualização a cada segundo
+- Rotação automática a cada oito segundos
+- Renderização em buffer no OLED
+- Toque curto no GPIO 0 avança a tela
+- Pressão longa de cinco segundos limpa redes, cursor, fuso e DST e reinicia o equipamento
 
 ## Monitor de rede e horário
 
-Ping ICMP ao gateway a cada aproximadamente cinco segundos, com timeout de um
-segundo em tarefa separada. O gráfico mostra as últimas 24 respostas/timeouts.
-O relatório inclui RTT mínimo/médio/máximo, idade da medição, quedas, tempo offline
-e três eventos recentes em minutos desde o boot. Timeouts não entram na média.
-Tudo fica na RAM e reinicia com a placa. Ping não testa Internet; roteadores podem
-bloquear ICMP mesmo com Wi-Fi funcionando.
+- Ping ICMP ao gateway aproximadamente a cada cinco segundos
+- Timeout de um segundo em tarefa separada
+- Gráfico com as últimas 24 respostas/timeouts
+- RTT mínimo, médio e máximo
+- Estado do NTP configurado no arranque sem bloqueio
+- Fuso configurável entre -12 e 14
+- DST manual com adição fixa de uma hora
 
-NTP é configurado no boot sem esperar a sincronização, usando os parâmetros salvos.
-Fuso inteiro -12..14, com DST manual fixo de uma hora. Sem sincronização, telas
-mostram estado de espera. Hora válida não comprova alcance atual dos servidores.
+## Comandos
 
-## Comandos e validação
+A lista completa está em `COMANDOS.md` e também pode ser vista com o comando `help`.
 
-Lista completa em `COMANDOS.md`, também disponível pelo comando `help`.
-LED contínuo e sequências finitas executam sem bloquear; `led_on`/`led_off`
-cancelam qualquer sequência. Credenciais são ocultadas dos logs.
+## Notas
 
-Foram realizadas verificações estáticas de estrutura, includes locais, integração,
-preservação dos comandos, documentação e ZIP. Compilação e testes na placa ainda
-precisam ser feitos. Verifique o primeiro boot, salvamento dos perfis, reconexão,
-AP/UDP, todas as telas, LED, botão e NTP com sua placa.
+- Credenciais são ocultadas dos logs.
+- Pacotes UDP acima de 255 bytes são rejeitados.
+- O botão continua a ser lido mesmo durante proteção de ecrã.
+- Compilação e testes em hardware real ainda devem ser validados na tua placa.
 
-Referências: [Wi-Fi Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
-e [ICMP Echo Espressif](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/icmp_echo.html).
+## Referências
+
+- [Wi-Fi Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
+- [ICMP Echo Espressif](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/icmp_echo.html)
