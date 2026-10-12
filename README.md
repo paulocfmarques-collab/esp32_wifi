@@ -77,6 +77,11 @@ ou energização pode acionar o modo de gravação da placa; EN continua sendo r
 
 `tela:0..4`, `tela:next`, `tela:auto` e `clear_log` controlam a exibição.
 
+Após três minutos sem interação, um relógio pequeno se move pela tela, mantendo
+o OLED ligado. Toque curto no botão sai da proteção e avança a página; comandos
+também encerram a proteção e renovam o tempo de inatividade. Logs automáticos de
+rede não renovam esse tempo. A leitura do botão continua durante a proteção.
+
 ## Monitor de rede e horário
 
 Ping ICMP ao gateway a cada aproximadamente cinco segundos, com timeout de um

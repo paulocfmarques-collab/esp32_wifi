@@ -2,6 +2,8 @@
 
 ## 2.0.0
 
+- Inventário geral de comandos sincronizado com os handlers de rede, diagnóstico,
+  OLED e LED do firmware.
 - Portal responsivo de informações e edição de cinco redes, com recursos locais.
 - Gravação verificada, validação e tentativa de restauração em falha.
 - Busca assíncrona e reconexão automática mantendo AP/UDP disponíveis.

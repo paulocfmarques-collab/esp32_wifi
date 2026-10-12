@@ -117,6 +117,7 @@ void loop()
         stable = reading;
         if (stable == LOW)
         {
+            oled.registrarInteracao();
             pressed = now;
             armed = false;
         }

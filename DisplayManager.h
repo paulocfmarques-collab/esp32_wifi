@@ -20,7 +20,6 @@ class DisplayManager
         display.print(text.substring(0, 21));
     }
     uint32_t ultimaInteracao = 0;
-    bool telaApagada = false;
 
 public:
     DisplayManager() : display(Config::SCREEN_WIDTH, Config::SCREEN_HEIGHT, &Wire, -1) {}
@@ -35,13 +34,15 @@ public:
             display.display();
         }
         adicionarLinha(ready ? "OLED pronto" : "OLED indisponivel");
+        registrarInteracao();
     }
     bool isPronto() const { return ready; }
     void setMonitor(const NetworkMonitor *m) { monitor = m; }
     void setConnecting(const String &ssid) { trying = ssid; }
     void selecionarPagina(uint8_t p)
     {
-        page = p;
+        registrarInteracao();
+        page = p % Config::PAGE_COUNT;
         automatic = false;
         consoleUntil = 0;
         rendered = millis() - 1000;
@@ -49,6 +50,7 @@ public:
     void avancarPagina() { selecionarPagina((page + 1) % Config::PAGE_COUNT); }
     void paginasAutomaticas()
     {
+        registrarInteracao();
         automatic = true;
         pageAt = millis();
         consoleUntil = 0;
@@ -58,6 +60,7 @@ public:
     bool getModoRelogioGrande() const { return page == 0; }
     void clearLog()
     {
+        registrarInteracao();
         for (auto &s : lines)
             s = "";
         count = 0;
@@ -81,29 +84,37 @@ public:
 
     void registrarInteracao() {
         ultimaInteracao = millis();
-        if (telaApagada && ready) {
-            display.ssd1306_command(SSD1306_DISPLAYON);
-            telaApagada = false;
-        }
+        pageAt = ultimaInteracao;
+        consoleUntil = 0;
+        rendered = ultimaInteracao - 1000;
     }
 
 void atualizarTela(NTPUtil& ntpService) {
     if (!ready) return;
     uint32_t now = millis();
 
-    // Verifica timeout para economia de tela (Burn-in protection)
-    if (now - ultimaInteracao > Config::OLED_TIMEOUT_MS) {
-        if (!telaApagada) {
-            display.ssd1306_command(SSD1306_DISPLAYOFF);
-            telaApagada = true;
-        }
-        return;
-    }
+    // Limita o trafego I2C para manter o loop livre para ler o botao.
+    if (now - rendered < 1000) return;
+    rendered = now;
 
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    String dt; ntpService.getDateTime(dt, 10); bool valid = dt.length() == 19 && dt.indexOf("Erro") < 0;
+    String dt; ntpService.getDateTime(dt, 0); bool valid = dt.length() == 19 && dt.indexOf("Erro") < 0;
+
+    // Relogio em movimento: mantem o OLED ligado sem elementos fixos.
+    if (now - ultimaInteracao >= Config::OLED_TIMEOUT_MS) {
+        const uint32_t step = (now - ultimaInteracao - Config::OLED_TIMEOUT_MS) / 1000;
+        const int maxX = Config::SCREEN_WIDTH - 8 * 6;
+        const int maxY = Config::SCREEN_HEIGHT - 8;
+        const int phaseX = step % (2 * maxX);
+        const int phaseY = (step / 2) % (2 * maxY);
+        display.setCursor(phaseX <= maxX ? phaseX : 2 * maxX - phaseX,
+                          phaseY <= maxY ? phaseY : 2 * maxY - phaseY);
+        display.print(valid ? dt.substring(11) : String("--:--:--"));
+        display.display();
+        return;
+    }
 
     if (int32_t(consoleUntil - now) > 0) {
         display.setCursor(0, 0); display.print(valid ? dt : String("RELOGIO SEM SINCRONIA"));

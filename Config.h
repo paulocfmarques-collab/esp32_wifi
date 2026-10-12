@@ -25,7 +25,7 @@ namespace Config {
 
     constexpr const char* OTA_HOSTNAME = "ESP32-Network-Hub";
     constexpr const char* OTA_PASSWORD = ""; // Deixe vazio ou coloque uma senha para proteger o upload
-    constexpr uint32_t OLED_TIMEOUT_MS = 180000;
+    constexpr uint32_t OLED_TIMEOUT_MS = 180000; // Inatividade antes do protetor de tela
 }
 
 
