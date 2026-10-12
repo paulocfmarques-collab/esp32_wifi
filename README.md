@@ -1,113 +1,128 @@
 # ESP32 Wi-Fi / OLED
 
-Firmware para ESP32 com portal local de configuração Wi-Fi, display OLED SSD1306 128x64, monitor de rede e comandos via serial/UDP.
+[![Release](https://img.shields.io/badge/release-2.0.1-blue.svg)](./CHANGELOG.md)
+[![Platform](https://img.shields.io/badge/platform-ESP32-orange.svg)](https://www.espressif.com/en/products/socs/esp32)
+[![Language](https://img.shields.io/badge/language-C%2B%2B%20%2F%20C-lightgrey.svg)](https://isocpp.org/)
+[![Arduino-ESP32](https://img.shields.io/badge/Arduino-ESP32%203.x-green.svg)](https://github.com/espressif/arduino-esp32)
 
-## Destaques
+Firmware for ESP32 boards with a local Wi-Fi setup portal, SSD1306 OLED display, network monitoring, and serial/UDP commands.
 
-- Portal web local para configurar até cinco redes Wi-Fi
-- Reconexão automática e AP de fallback quando necessário
-- OLED com múltiplas telas de status e diagnóstico
-- Monitor ICMP do gateway com histórico em memória
-- Comandos para rede, LED, telas, logs e manutenção
-- Sem dependência de serviços externos no portal
+## Overview
 
-## Requisitos de hardware
+ESP32 Wi-Fi / OLED provides a self-contained Wi-Fi configuration experience for ESP32 devices. It stores up to five network profiles, offers automatic reconnection, exposes a local portal for status and configuration, and keeps the OLED display and diagnostics active during recovery attempts.
 
-| Recurso | Configuração |
+The project is designed to run entirely locally, without relying on external web services, CDNs, or remote assets.
+
+## Key features
+
+- Local web portal for managing up to five Wi-Fi profiles
+- Automatic reconnection with AP fallback when the connection drops
+- SSD1306 128x64 OLED interface with five status pages
+- ICMP gateway monitoring with in-memory history
+- Serial and UDP command handling for network, display, LED, and diagnostics
+- Offline-friendly portal with no external dependencies
+
+## Hardware requirements
+
+| Component | Configuration |
 |---|---|
-| Placa | ESP32 compatível com Arduino-ESP32 3.x |
+| Board | ESP32 compatible board using Arduino-ESP32 3.x |
 | LED | GPIO 2 |
-| Botão / BOOT | GPIO 0, ligado ao GND, com `INPUT_PULLUP` |
+| Button / BOOT | GPIO 0, tied to GND, using `INPUT_PULLUP` |
 | OLED SDA / SCL | GPIO 21 / GPIO 22 |
-| Display | SSD1306 128x64, I2C 0x3C, monocromático |
-| UDP | Porta 4210 |
-| Fuso padrão | UTC -3 |
+| Display | SSD1306 128x64, I2C address `0x3C`, monochrome |
+| UDP | Port `4210` |
+| Default time zone | UTC-3 |
 
-## Dependências
+## Dependencies
 
 - Arduino-ESP32 3.x
 - Adafruit SSD1306
 - Adafruit GFX
-- suporte nativo de `ping/ping_sock.h` do ESP-IDF
+- Native `ping/ping_sock.h` support from ESP-IDF
 
-## Instalação
+## Installation
 
-1. Baixe ou clone o repositório.
-2. Abra `wifi/wifi.ino` no Arduino IDE.
-3. Mantenha a pasta `wifi` e os arquivos auxiliares juntos.
-4. Selecione a placa, a porta e as opções usadas no projeto original.
-5. Compile, grave e abra o Monitor Serial em 115200 baud.
+1. Download or clone the repository.
+2. Open `wifi/wifi.ino` in the Arduino IDE.
+3. Keep the `wifi` folder and supporting source files together.
+4. Select the target board, port, and the same options used by the original project.
+5. Compile, upload, and open the Serial Monitor at 115200 baud.
 
-## Primeiro arranque
+## First boot and portal access
 
-Ao iniciar sem ligação ativa, o ESP32 cria o AP **ESP32_CONFIG** em **192.168.4.1** enquanto tenta ligar às redes guardadas.
+When no connection is available, the ESP32 starts the **ESP32_CONFIG** access point at **192.168.4.1** while it searches for saved networks.
 
-- Aceda a `/wifi` para configurar até cinco perfis.
-- Após ligação bem-sucedida, o AP é desligado.
-- O OLED mostra o IP atribuído e esse IP passa a servir o portal.
-- Se a ligação cair, o AP é reativado durante novas tentativas.
+- Visit `/wifi` to configure up to five profiles.
+- Once a connection is established, the access point is disabled.
+- The OLED shows the assigned IP address, which becomes the primary portal endpoint.
+- If the connection drops, the access point is re-enabled while recovery retries continue.
 
-## Funcionalidades do portal
+## Portal endpoints
 
-- `/info`: mostra rede, IP, RSSI, memória, tempo ligado e estado do monitor de conexão.
-- `/wifi`: edição de cinco perfis, indicação da rede ativa, mostrar/ocultar senha e suporte a rede aberta.
+- `/info`: shows network, IP address, RSSI, memory usage, uptime, and connection-monitor status.
+- `/wifi`: manages the five Wi-Fi profiles, displays the active network, supports show/hide password, and allows open-network configuration.
 
-Regras importantes:
+### Portal behavior
 
-- O portal funciona sem Internet.
-- Não usa fontes, estilos ou scripts externos.
-- Senhas salvas nunca são enviadas ao navegador.
-- Se o SSID não mudar, uma senha vazia mantém a anterior.
-- Marque **Rede aberta** para gravar sem senha.
-- Apagar o SSID remove o perfil.
+- The portal works without Internet access.
+- No external fonts, styles, or scripts are loaded.
+- Stored passwords are never sent back to the browser.
+- If the SSID does not change, an empty password keeps the previous one.
+- Select **Open network** to save a profile without a password.
+- Clearing the SSID removes the profile.
 
-## Procura e recuperação de rede
+The server validates every profile, verifies writes by reading them back, and only confirms success before scheduling a reboot. If a write fails, it attempts to restore the previous data and reports the outcome.
 
-- A varredura é assíncrona.
-- Após a varredura, os perfis são testados sequencialmente.
-- A última rede utilizada é tentada primeiro.
-- Cada perfil pode ficar até dez segundos em tentativa.
-- SSIDs ocultos também são suportados.
-- Se nenhuma rede ligar, o AP permanece disponível e um novo ciclo começa após trinta segundos.
+## Network discovery and recovery
 
-## OLED e botão
+- Network scanning is asynchronous.
+- After scanning, profiles are tried sequentially.
+- The most recently used network is attempted first.
+- Each profile can be tried for up to ten seconds.
+- Hidden SSIDs are supported.
+- If no network connects, the access point remains available and a new retry cycle begins after thirty seconds.
 
-O firmware inclui cinco páginas principais:
+The main loop continues serving the portal, commands, LED, button, and OLED updates while recovery is in progress.
 
-1. relógio
-2. rede Wi-Fi
-3. sistema
-4. ping ao gateway
-5. histórico
+## OLED pages and button behavior
 
-- Atualização a cada segundo
-- Rotação automática a cada oito segundos
-- Renderização em buffer no OLED
-- Toque curto no GPIO 0 avança a tela
-- Pressão longa de cinco segundos limpa redes, cursor, fuso e DST e reinicia o equipamento
+The firmware includes five main pages:
 
-## Monitor de rede e horário
+1. Clock
+2. Wi-Fi status
+3. System information
+4. Gateway ping
+5. History
 
-- Ping ICMP ao gateway aproximadamente a cada cinco segundos
-- Timeout de um segundo em tarefa separada
-- Gráfico com as últimas 24 respostas/timeouts
-- RTT mínimo, médio e máximo
-- Estado do NTP configurado no arranque sem bloqueio
-- Fuso configurável entre -12 e 14
-- DST manual com adição fixa de uma hora
+- One-second refresh rate
+- Automatic page rotation every eight seconds
+- Buffered OLED rendering
+- Short press on GPIO 0 advances to the next page
+- Five-second long press clears networks, cursor position, time zone, and DST state, then reboots the device
 
-## Comandos
+## Network monitoring and time
 
-A lista completa está em `COMANDOS.md` e também pode ser vista com o comando `help`.
+- ICMP ping to the gateway approximately every five seconds
+- One-second timeout handled in a dedicated task
+- Graph of the last 24 responses/timeouts
+- Minimum, average, and maximum RTT statistics
+- NTP configured at boot without blocking startup
+- Time zone configurable from UTC-12 to UTC+14
+- Manual DST support with a fixed one-hour adjustment
 
-## Notas
+## Commands
 
-- Credenciais são ocultadas dos logs.
-- Pacotes UDP acima de 255 bytes são rejeitados.
-- O botão continua a ser lido mesmo durante proteção de ecrã.
-- Compilação e testes em hardware real ainda devem ser validados na tua placa.
+The full command list is available in `COMANDOS.md` and through the `help` command.
 
-## Referências
+## Notes
+
+- Credentials are hidden from logs.
+- UDP packets larger than 255 bytes are rejected.
+- The button remains readable even during the screen-protection mode.
+- Hardware validation and real-device testing should still be performed on your target board.
+
+## References
 
 - [Wi-Fi Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
 - [ICMP Echo Espressif](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/icmp_echo.html)
