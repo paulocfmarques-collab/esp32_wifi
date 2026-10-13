@@ -29,19 +29,6 @@ Firmware for ESP32 boards with a local Wi-Fi setup portal, SSD1306 OLED display,
 - [Notes](#notes)
 - [References](#references)
 
-## Screenshots
-
-> Add screenshots or short GIFs here to showcase the portal, OLED pages, and network status views.
->
-> Suggested assets:
-> - `docs/images/portal.png`
-> - `docs/images/oled-home.png`
-> - `docs/images/wifi-settings.gif`
-
-| Portal | OLED Status | Network Monitor |
-|---|---|---|
-| _Screenshot placeholder_ | _Screenshot placeholder_ | _Screenshot placeholder_ |
-
 ## Quick start
 
 1. Open `wifi/wifi.ino` in the Arduino IDE.
