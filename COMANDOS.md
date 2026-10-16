@@ -4,6 +4,34 @@ Envie por **UDP 4210** ao IP STA ou ao IP AP **192.168.4.1**. Limite de entrada:
 **255 bytes**. Os nomes são normalizados para minúsculas; os argumentos preservam
 caixa e espaços. Comandos que alteram dados executam diretamente no dispositivo.
 
+## Prometheus e interface web
+
+A configuração Prometheus é feita exclusivamente pela página
+`http://IP_DO_ESP32/prometheus`, na **porta 80**; não foram adicionados comandos
+UDP de configuração.
+
+| Rota | Porta | Função |
+|---|---|---|
+| `GET /prometheus` | 80 | Formulário com endereço do servidor, porta e intervalo salvos. |
+| `POST /prometheus` | 80 | Salva `host`, `port`, `interval` em Preferences/NVS. |
+| `GET /prometheus.yml` | 80 | Download da configuração de coleta. |
+| `GET /metrics` | Configurada, padrão 9120 | Métricas reais em formato Prometheus 0.0.4. |
+
+O Prometheus coleta os dados no ESP32 (**pull**). O endereço do servidor é
+referência persistente; não habilita envio ativo. A porta salva é a de métricas
+do ESP32, não a de acesso ao servidor Prometheus. Painel e terminal permanecem
+na porta 80, sem redirecionamento, inclusive no AP. Se a coleta usar 80, ela
+compartilha o servidor web.
+
+Porta: 1..65535; intervalo: 5..3600 segundos. A alteração de porta é aplicada em
+cerca de um segundo, sem reiniciar. O intervalo só é aplicado à coleta quando o
+YAML é instalado/recarregado no servidor. Entrada inválida retorna HTTP 400;
+falha de gravação retorna 503, preservando a configuração ativa.
+
+`reset_wifi` e a limpeza pelo botão não apagam as configurações Prometheus nem
+os contadores de boot/watchdog, armazenados no namespace NVS `telemetry`.
+Inventário de métricas e limitações em [PROMETHEUS.md](PROMETHEUS.md).
+
 ## Sistema
 
 | Comando | Função |

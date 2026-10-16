@@ -3,6 +3,7 @@
 Atualização do projeto Wi-Fi com OLED SSD1306 128×64. Inclui portal moderno, cinco
 redes persistentes, reconexão em segundo plano, monitor de rede, cinco telas e
 comandos padronizados. Os pinos do projeto original foram mantidos.
+Inclui também coleta Prometheus com configuração persistente pela interface web.
 
 ## Hardware e dependências
 
@@ -13,6 +14,8 @@ comandos padronizados. Os pinos do projeto original foram mantidos.
 | OLED SDA / SCL | GPIO 21 / GPIO 22 |
 | Display | SSD1306 128×64, I2C 0x3C, monocromático |
 | UDP | Porta 4210 |
+| Interface web | Porta fixa 80 |
+| Métricas Prometheus | Porta configurável, padrão 9120 |
 | Fuso padrão | UTC -3 |
 
 Use a mesma seleção de placa ESP32 da aplicação original e Arduino-ESP32 3.x,
@@ -40,6 +43,30 @@ esse IP para usar o portal. Uma queda reabre o AP durante as novas tentativas.
   a cada dez segundos.
 - `/wifi`: cinco perfis, indicação da rede conectada, mostrar/ocultar senha e
   seleção explícita de rede aberta.
+- `/prometheus`: configuração persistente do servidor e da coleta.
+- `/prometheus.yml`: download do YAML para aplicar ao servidor Prometheus.
+
+## Prometheus
+
+Abra `http://IP_DO_ESP32/prometheus`, sempre na porta **80**. Salve o endereço
+IPv4/DNS do servidor (sem protocolo, caminho ou porta), a porta de métricas do
+ESP32 (1..65535, padrão **9120**) e o intervalo (5..3600 segundos, padrão **15**).
+Os dados permanecem em Preferences/NVS após reiniciar.
+
+O Prometheus coleta em `http://IP_DO_ESP32:PORTA/metrics` (**pull**). Não há envio
+ativo nem Pushgateway; o endereço do servidor é uma referência salva. Copie ou
+baixe o YAML e aplique-o ao Prometheus: salvar no ESP32 não altera o servidor.
+O intervalo salvo só passa a valer com a aplicação desse YAML.
+
+A porta de coleta muda cerca de um segundo após salvar, sem reboot.
+Interface web, terminal e configuração permanecem na porta **80**, inclusive
+no AP. Se a porta de coleta também for 80, os serviços compartilham o servidor;
+outras portas atendem somente `/metrics`.
+
+Há métricas de identificação, disponibilidade, Wi-Fi, CPU, tarefas, memória,
+flash, botão, LED e HTTP. Energia, bateria, sensores ambientais, relés, ADC e
+MQTT ainda não têm integração: essas séries são omitidas, sem valores fictícios.
+Consulte [PROMETHEUS.md](PROMETHEUS.md) para o inventário, exemplos e limitações.
 
 O portal funciona sem Internet e não busca fontes, estilos ou scripts externos.
 Senhas salvas nunca são enviadas ao navegador. Senha vazia mantém a anterior
@@ -71,7 +98,8 @@ Atualização de um segundo, rotação de oito segundos e desenho em buffer do O
 O display é monocromático: barras mudam de quantidade, não de cor.
 
 Toque curto em GPIO 0 avança a tela. Segure cinco segundos e solte para limpar
-redes, cursor, fuso e DST e reiniciar, preservando o firmware. O loop continua
+redes, cursor, fuso e DST e reiniciar, preservando o firmware. As preferências
+Prometheus e os contadores de boot/watchdog não são apagados. O loop continua
 funcionando enquanto o botão estiver pressionado. BOOT pressionado durante reset
 ou energização pode acionar o modo de gravação da placa; EN continua sendo reset.
 

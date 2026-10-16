@@ -1,178 +1,139 @@
-# ESP32 Wi-Fi / OLED
+# ESP32 Wi-Fi / OLED — versão 2.0.0
 
-[![Release](https://img.shields.io/badge/release-2.0.1-blue.svg)](./CHANGELOG.md)
-[![Platform](https://img.shields.io/badge/platform-ESP32-orange.svg)](https://www.espressif.com/en/products/socs/esp32)
-[![Language](https://img.shields.io/badge/language-C%2B%2B%20%2F%20C-lightgrey.svg)](https://isocpp.org/)
-[![Arduino-ESP32](https://img.shields.io/badge/Arduino-ESP32%203.x-green.svg)](https://github.com/espressif/arduino-esp32)
+Atualização do projeto Wi-Fi com OLED SSD1306 128×64. Inclui portal moderno, cinco
+redes persistentes, reconexão em segundo plano, monitor de rede, cinco telas e
+comandos padronizados. Os pinos do projeto original foram mantidos.
+Inclui também coleta Prometheus com configuração persistente pela interface web.
 
-Firmware for ESP32 boards with a local Wi-Fi setup portal, SSD1306 OLED display, network monitoring, and serial/UDP commands.
+## Hardware e dependências
 
-> [!IMPORTANT]
-> This project is designed to run entirely locally, without relying on external web services, CDNs, or remote assets.
-
-## Table of contents
-
-- [Overview](#overview)
-- [Screenshots](#screenshots)
-- [Quick start](#quick-start)
-- [Architecture](#architecture)
-- [Key features](#key-features)
-- [Hardware requirements](#hardware-requirements)
-- [Dependencies](#dependencies)
-- [First boot and portal access](#first-boot-and-portal-access)
-- [Portal endpoints](#portal-endpoints)
-- [Network discovery and recovery](#network-discovery-and-recovery)
-- [OLED pages and button behavior](#oled-pages-and-button-behavior)
-- [Network monitoring and time](#network-monitoring-and-time)
-- [Commands](#commands)
-- [Project structure](#project-structure)
-- [Notes](#notes)
-- [References](#references)
-
-## Quick start
-
-1. Open `wifi/wifi.ino` in the Arduino IDE.
-2. Keep the `wifi` folder and supporting source files together.
-3. Select your ESP32 board and the same options used by the original project.
-4. Install the required libraries:
-   - Arduino-ESP32 3.x
-   - Adafruit SSD1306
-   - Adafruit GFX
-5. Compile, upload, and open the Serial Monitor at 115200 baud.
-6. Connect to the **ESP32_CONFIG** access point if the device starts in configuration mode.
-7. Open `/wifi` to save up to five Wi-Fi profiles.
-
-## Architecture
-
-The firmware is organized around a small set of continuously running responsibilities:
-
-- **Wi-Fi manager**: loads saved profiles, scans for known networks, connects, and triggers recovery when the link drops.
-- **Portal server**: serves the local configuration and information pages directly from the device.
-- **OLED renderer**: refreshes the SSD1306 display with status pages and diagnostic information.
-- **Network monitor**: pings the gateway periodically and stores recent results in RAM.
-- **Command handlers**: process serial and UDP commands for network control, LED behavior, display navigation, and diagnostics.
-- **Input handling**: reads the BOOT button for short-press navigation and long-press cleanup actions.
-
-These components are designed to cooperate without blocking the main loop, so the portal, display, commands, and recovery logic remain responsive even while the device is reconnecting.
-
-## Overview
-
-ESP32 Wi-Fi / OLED provides a self-contained Wi-Fi configuration experience for ESP32 devices. It stores up to five network profiles, offers automatic reconnection, exposes a local portal for status and configuration, and keeps the OLED display and diagnostics active during recovery attempts.
-
-## Key features
-
-- Local web portal for managing up to five Wi-Fi profiles
-- Automatic reconnection with AP fallback when the connection drops
-- SSD1306 128x64 OLED interface with five status pages
-- ICMP gateway monitoring with in-memory history
-- Serial and UDP command handling for network, display, LED, and diagnostics
-- Offline-friendly portal with no external dependencies
-
-## Hardware requirements
-
-| Component | Configuration |
+| Recurso | Configuração |
 |---|---|
-| Board | ESP32 compatible board using Arduino-ESP32 3.x |
 | LED | GPIO 2 |
-| Button / BOOT | GPIO 0, tied to GND, using `INPUT_PULLUP` |
+| Botão / BOOT | GPIO 0, ligado ao GND, INPUT_PULLUP |
 | OLED SDA / SCL | GPIO 21 / GPIO 22 |
-| Display | SSD1306 128x64, I2C address `0x3C`, monochrome |
-| UDP | Port `4210` |
-| Default time zone | UTC-3 |
+| Display | SSD1306 128×64, I2C 0x3C, monocromático |
+| UDP | Porta 4210 |
+| Interface web | Porta fixa 80 |
+| Métricas Prometheus | Porta configurável, padrão 9120 |
+| Fuso padrão | UTC -3 |
 
-## Dependencies
+Use a mesma seleção de placa ESP32 da aplicação original e Arduino-ESP32 3.x,
+Adafruit SSD1306 e Adafruit GFX. O ping usa `ping/ping_sock.h` nativo do ESP-IDF.
+Não foram adicionados periféricos Ethernet ou cartão SD.
 
-- Arduino-ESP32 3.x
-- Adafruit SSD1306
-- Adafruit GFX
-- Native `ping/ping_sock.h` support from ESP-IDF
+## Instalação
 
-## First boot and portal access
+1. Extraia o ZIP mantendo a pasta `wifi` e seus arquivos juntos.
+2. Abra `wifi/wifi.ino` no Arduino IDE.
+3. Selecione sua placa, porta e as opções utilizadas no projeto original.
+4. Compile e grave.
+5. Abra a Serial a 115200 baud para acompanhar a inicialização.
 
-When no connection is available, the ESP32 starts the **ESP32_CONFIG** access point at **192.168.4.1** while it searches for saved networks.
+O arquivo `.cpp` do monitor também deve ficar junto do sketch.
 
-- Visit `/wifi` to configure up to five profiles.
-- Once a connection is established, the access point is disabled.
-- The OLED shows the assigned IP address, which becomes the primary portal endpoint.
-- If the connection drops, the access point is re-enabled while recovery retries continue.
+## Primeiro acesso e portal
 
-## Portal endpoints
+Ao iniciar sem conexão, o ESP32 disponibiliza o AP **ESP32_CONFIG**, com endereço
+**192.168.4.1**, enquanto procura as redes salvas. Abra `/wifi` para cadastrar os
+cinco perfis. Após conectar, o AP é desligado e o OLED mostra o IP obtido; acesse
+esse IP para usar o portal. Uma queda reabre o AP durante as novas tentativas.
 
-- `/info`: shows network, IP address, RSSI, memory usage, uptime, and connection-monitor status.
-- `/wifi`: manages the five Wi-Fi profiles, displays the active network, supports show/hide password, and allows open-network configuration.
+- `/info`: rede, IP, RSSI, memória, tempo ligado e monitor de conexão. Atualiza
+  a cada dez segundos.
+- `/wifi`: cinco perfis, indicação da rede conectada, mostrar/ocultar senha e
+  seleção explícita de rede aberta.
+- `/prometheus`: endereço do servidor, porta de métricas e intervalo de coleta,
+  salvos em Preferences/NVS.
+- `/prometheus.yml`: configuração de coleta para baixar e aplicar no servidor.
 
-### Portal behavior
+## Prometheus
 
-- The portal works without Internet access.
-- No external fonts, styles, or scripts are loaded.
-- Stored passwords are never sent back to the browser.
-- If the SSID does not change, an empty password keeps the previous one.
-- Select **Open network** to save a profile without a password.
-- Clearing the SSID removes the profile.
+Abra `http://IP_DO_ESP32/prometheus` na porta **80**. Informe o endereço IPv4 ou
+DNS do servidor Prometheus, a **porta de métricas do ESP32** (1..65535, padrão
+9120) e o intervalo de coleta (5..3600 segundos, padrão 15). Salve e aplique o
+YAML apresentado ao servidor Prometheus.
 
-The server validates every profile, verifies writes by reading them back, and only confirms success before scheduling a reboot. If a write fails, it attempts to restore the previous data and reports the outcome.
+O modelo é **pull**: o Prometheus acessa `http://IP_DO_ESP32:PORTA/metrics`.
+O ESP32 não envia dados ativamente; o endereço do servidor fica salvo como
+referência. A porta configurada pertence ao endpoint do ESP32, não à interface
+web do servidor Prometheus. O intervalo só passa a valer após aplicar o YAML.
 
-## Network discovery and recovery
+Painel, terminal e configuração permanecem na **porta 80**, sem redirecionamento.
+A nova porta de coleta é aplicada cerca de um segundo após salvar, sem reboot.
+Se escolher 80, as métricas compartilham o servidor web; nas demais portas,
+o servidor de coleta atende somente `/metrics`. Isso também vale no modo AP.
 
-- Network scanning is asynchronous.
-- After scanning, profiles are tried sequentially.
-- The most recently used network is attempted first.
-- Each profile can be tried for up to ten seconds.
-- Hidden SSIDs are supported.
-- If no network connects, the access point remains available and a new retry cycle begins after thirty seconds.
+Somente métricas reais disponíveis são publicadas. Energia, bateria, sensores
+ambientais, relés, ADC e MQTT não estão integrados e não geram séries fictícias.
+Detalhes, inventário completo, limitações e exemplos em
+[PROMETHEUS.md](PROMETHEUS.md).
 
-The main loop continues serving the portal, commands, LED, button, and OLED updates while recovery is in progress.
+O portal funciona sem Internet e não busca fontes, estilos ou scripts externos.
+Senhas salvas nunca são enviadas ao navegador. Senha vazia mantém a anterior
+apenas quando o SSID não muda; marque Rede aberta para gravar sem senha.
+Apagar o SSID remove o perfil.
 
-## OLED pages and button behavior
+O servidor valida todos os perfis, verifica a gravação por leitura e só confirma
+sucesso antes de agendar o reboot. Em falha, tenta restaurar os dados anteriores
+e informa o resultado. A gravação de vários campos não é atômica contra falta de
+energia. Credenciais legadas são migradas para o perfil 1 quando possível.
 
-The firmware includes five main pages:
+## Busca e recuperação de rede
 
-1. Clock
-2. Wi-Fi status
-3. System information
-4. Gateway ping
-5. History
+A varredura é assíncrona. Após a varredura, os perfis são tentados sequencialmente,
+começando pela última rede utilizada, até dez segundos por perfil. Todos os perfis
+salvos são tentados, incluindo SSIDs ocultos. Se nenhum conecta, o AP permanece
+disponível e um novo ciclo começa após trinta segundos. O loop continua atendendo
+portal, comandos, LED, botão e OLED durante as tentativas. As tentativas mostram o
+SSID no console do OLED e na página de rede.
 
-- One-second refresh rate
-- Automatic page rotation every eight seconds
-- Buffered OLED rendering
-- Short press on GPIO 0 advances to the next page
-- Five-second long press clears networks, cursor position, time zone, and DST state, then reboots the device
+`wifi_add` salva perfis na lista circular; consulte `COMANDOS.md` para detalhes.
+O UDP também funciona no AP. Nomes de comandos não diferenciam maiúsculas e
+minúsculas; argumentos preservam caixa. Pacotes acima de 255 bytes são rejeitados.
 
-## Network monitoring and time
+## Telas e botão
 
-- ICMP ping to the gateway approximately every five seconds
-- One-second timeout handled in a dedicated task
-- Graph of the last 24 responses/timeouts
-- Minimum, average, and maximum RTT statistics
-- NTP configured at boot without blocking startup
-- Time zone configurable from UTC-12 to UTC+14
-- Manual DST support with a fixed one-hour adjustment
+Cinco páginas: relógio, rede Wi-Fi, sistema, ping ao gateway e histórico.
+Atualização de um segundo, rotação de oito segundos e desenho em buffer do OLED.
+O display é monocromático: barras mudam de quantidade, não de cor.
 
-## Commands
+Toque curto em GPIO 0 avança a tela. Segure cinco segundos e solte para limpar
+redes, cursor, fuso e DST e reiniciar, preservando o firmware. As preferências
+Prometheus e os contadores de boot/watchdog não são apagados. O loop continua
+funcionando enquanto o botão estiver pressionado. BOOT pressionado durante reset
+ou energização pode acionar o modo de gravação da placa; EN continua sendo reset.
 
-The full command list is available in `COMANDOS.md` and through the `help` command.
+`tela:0..4`, `tela:next`, `tela:auto` e `clear_log` controlam a exibição.
 
-## Project structure
+Após três minutos sem interação, um relógio pequeno se move pela tela, mantendo
+o OLED ligado. Toque curto no botão sai da proteção e avança a página; comandos
+também encerram a proteção e renovam o tempo de inatividade. Logs automáticos de
+rede não renovam esse tempo. A leitura do botão continua durante a proteção.
 
-```text
-wifi/
-├── wifi.ino            # Main Arduino sketch
-├── *.cpp               # Supporting implementation files
-├── *.h                 # Shared headers and declarations
-├── COMANDOS.md         # Command reference
-├── CHANGELOG.md        # Release history
-└── README.md           # Project documentation
-```
+## Monitor de rede e horário
 
-## Notes
+Ping ICMP ao gateway a cada aproximadamente cinco segundos, com timeout de um
+segundo em tarefa separada. O gráfico mostra as últimas 24 respostas/timeouts.
+O relatório inclui RTT mínimo/médio/máximo, idade da medição, quedas, tempo offline
+e três eventos recentes em minutos desde o boot. Timeouts não entram na média.
+Tudo fica na RAM e reinicia com a placa. Ping não testa Internet; roteadores podem
+bloquear ICMP mesmo com Wi-Fi funcionando.
 
-- Credentials are hidden from logs.
-- UDP packets larger than 255 bytes are rejected.
-- The button remains readable even during the screen-protection mode.
-- Hardware validation and real-device testing should still be performed on your target board.
+NTP é configurado no boot sem esperar a sincronização, usando os parâmetros salvos.
+Fuso inteiro -12..14, com DST manual fixo de uma hora. Sem sincronização, telas
+mostram estado de espera. Hora válida não comprova alcance atual dos servidores.
 
-## References
+## Comandos e validação
 
-- [Wi-Fi Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
-- [ICMP Echo Espressif](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/icmp_echo.html)
+Lista completa em `COMANDOS.md`, também disponível pelo comando `help`.
+LED contínuo e sequências finitas executam sem bloquear; `led_on`/`led_off`
+cancelam qualquer sequência. Credenciais são ocultadas dos logs.
+
+Foram realizadas verificações estáticas de estrutura, includes locais, integração,
+preservação dos comandos, documentação e ZIP. Compilação e testes na placa ainda
+precisam ser feitos. Verifique o primeiro boot, salvamento dos perfis, reconexão,
+AP/UDP, todas as telas, LED, botão e NTP com sua placa.
+
+Referências: [Wi-Fi Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
+e [ICMP Echo Espressif](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/icmp_echo.html).

@@ -18,6 +18,7 @@ static String portalStart(const char *title, bool wifi, bool refresh = false)
     h += String("<a href='/info' ") + (!wifi ? "class='active' aria-current='page'" : "") + ">Informações</a>";
     h += String("<a href='/wifi' ") + (wifi ? "class='active' aria-current='page'" : "") + ">Redes Wi-Fi</a>";
     h += F("<a href='/terminal'>Console Terminal</a>"); // <--- ADICIONE ESTA LINHA
+    h += F("<a href='/prometheus'>Prometheus</a>");
     h += F("</nav><p class='aside-note'>Seu dispositivo, suas conexões.<br><br>Portal local · ESP32</p></aside><main>");
     return h;
 }

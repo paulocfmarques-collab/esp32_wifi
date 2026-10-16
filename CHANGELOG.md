@@ -1,22 +1,37 @@
 # Changelog
 
-## 2.0.1
+## 2026-10-16 — Prometheus
 
-- Documentation refreshed and expanded with a more polished project presentation.
-- README rewritten in English with badges, screenshots placeholders, and a compact quick-start section.
-- Added clearer guidance for installation, first boot, portal usage, and recovery flow.
-- Changelog aligned to English for consistency across project documentation.
+- Coleta direta (`pull`) em `/metrics`, no formato Prometheus 0.0.4.
+- Página `/prometheus` com endereço IPv4/DNS do servidor, porta de coleta e
+  intervalo persistidos juntos em Preferences/NVS, namespace `telemetry`.
+- Interface web, terminal e configuração mantidos na porta 80. Métricas na porta
+  salva (padrão 9120), aplicada sem reboot e restaurada no boot, inclusive no AP.
+  A porta 80 pode ser compartilhada sem abrir dois listeners na mesma porta.
+- Download de YAML por `/prometheus.yml` e link para a porta de métricas salva.
+  O servidor Prometheus precisa receber/recarregar o YAML; não há envio ativo.
+- Métricas reais de identificação, disponibilidade, Wi-Fi, CPU, tarefas, memória,
+  flash, botão GPIO0, LED GPIO2 e requisições HTTP de ambos os servidores.
+- Contadores persistentes de boot, reinicializações e watchdog. Desconexões e
+  contadores HTTP ficam em RAM. Falhas de persistência são informadas na Serial.
+- Uso de CPU por runtime das tarefas idle dos núcleos, quando suportado pelo SDK,
+  sem inventar valores durante aquecimento ou amostras inválidas.
+- Energia, bateria, sensores ambientais, relés, ADC e MQTT documentados como
+  indisponíveis, pois o projeto não tem hardware/integração para essas séries.
+- Documentação de configuração, portas, persistência, métricas, diagnóstico e
+  validação em [PROMETHEUS.md](PROMETHEUS.md), com referências nos guias e comandos.
 
 ## 2.0.0
 
-- Command inventory synchronized with the network, diagnostic, OLED, and LED handlers.
-- Responsive information and five-network editing portal with local-only resources.
-- Verified writes, validation, and rollback attempt on failure.
-- Asynchronous scanning and automatic reconnection while keeping AP/UDP available.
-- Five OLED pages and ICMP monitor with in-memory history.
-- Button short press for navigation and long press for cleanup, including offline usage.
-- Network, monitor, display, and diagnostic commands; help and full list updated.
-- Continuous LED behavior and non-blocking pulses.
-- NTP configured at boot without waiting and explicit manual DST adjustment.
-- Passwords hidden from logs and oversized UDP packets rejected.
-- Original pins and existing commands preserved.
+- Inventário geral de comandos sincronizado com os handlers de rede, diagnóstico,
+  OLED e LED do firmware.
+- Portal responsivo de informações e edição de cinco redes, com recursos locais.
+- Gravação verificada, validação e tentativa de restauração em falha.
+- Busca assíncrona e reconexão automática mantendo AP/UDP disponíveis.
+- Cinco telas OLED e monitor ICMP com histórico em RAM.
+- Botão com toque para navegação e pressão longa para limpeza, inclusive offline.
+- Comandos de redes, monitor, telas e diagnóstico; help e lista completa atualizados.
+- LED contínuo e pulsos sem bloqueios.
+- NTP sem espera no boot e ajuste de DST manual explícito.
+- Senhas ocultadas dos logs e pacotes UDP grandes rejeitados.
+- Pinos e comandos anteriores preservados.

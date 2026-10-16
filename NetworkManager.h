@@ -10,6 +10,7 @@
 #include "HardwareController.h"
 #include "NetworkMonitor.h"
 #include "PortalUi.h"
+#include "MetricsService.h"
 
 // Adicione isso logo abaixo dos #include existentes no topo de NetworkManager.h
 class CommandHandler; 
@@ -52,6 +53,11 @@ static String metric(const char *title, const String &value, const char *hint)
 class DeviceNetwork
 {
   WebServer server{80};
+  WebServer metricsServer{9120};
+  MetricsService metrics;
+  uint16_t activeMetricsPort = 9120;
+  bool metricsPortPending = false;
+  uint32_t metricsPortSavedAt = 0;
   WiFiUDP udp;
   Preferences prefs;
   NetworkMonitor telemetry;
@@ -61,6 +67,65 @@ class DeviceNetwork
   uint32_t restartAt = 0, phaseAt = 0, retryAt = 0;
   uint8_t phase = 0, attempted = 0;
   int lastUsed = -1, slot = -1;
+  void sendMetrics(WebServer &web)
+  {
+    web.sendHeader("Cache-Control", "no-store");
+    web.send(200, "text/plain; version=0.0.4; charset=utf-8", metrics.exposition());
+  }
+  void startMetricsServer()
+  {
+    metricsServer.stop();
+    activeMetricsPort = metrics.configuration().port;
+    if (activeMetricsPort != 80)
+      metricsServer.begin(activeMetricsPort);
+    metricsPortPending = false;
+    Serial.printf("[METRICS] Porta %u; interface web na porta 80.\n", activeMetricsPort);
+  }
+  void handlePrometheus(int status = 200, const String &notice = "")
+  {
+    const auto &config = metrics.configuration();
+    String h = portalStart("Prometheus", false);
+    h += F("<div class='top'><div><div class='eyebrow'>Monitoramento</div><h1>Prometheus</h1><p class='muted'>Coleta direta de metricas reais do ESP32.</p></div></div>");
+    if (notice.length())
+      h += "<div class='notice' role='status'>" + esc(notice) + "</div>";
+    h += F("<article class='card'><h2>Configuracao persistente</h2><form action='/prometheus' method='post'>");
+    h += "<label class='field' for='host'>Endereco do servidor Prometheus (IPv4 ou DNS)</label><input id='host' name='host' type='text' maxlength='253' required value='" + esc(String(config.host)) + "' placeholder='prometheus.local'>";
+    h += "<label class='field' for='port'>Porta de metricas do ESP32</label><input id='port' name='port' type='number' min='1' max='65535' required value='" + String(config.port) + "'>";
+    h += "<label class='field' for='interval'>Intervalo de coleta (segundos)</label><input id='interval' name='interval' type='number' min='5' max='3600' required value='" + String(config.interval) + "'>";
+    h += F("<div class='actions'><button type='submit'>Salvar nas preferencias</button></div></form><p class='hint'>Use o endereco sem protocolo, caminho ou porta. Ele identifica o servidor, mas nao configura envio ativo. A porta acima pertence ao endpoint /metrics deste ESP32. Painel, API e configuracao permanecem na porta 80. A alteracao e aplicada em cerca de um segundo; a porta 80 pode ser compartilhada.</p></article>");
+    h += F("<article class='card section'><h2>Configuracao do servidor</h2><p>Adicione o job ao Prometheus e recarregue sua configuracao. Salvar aqui nao altera o servidor automaticamente.</p><pre style='white-space:pre-wrap'>");
+    h += esc(metrics.scrapeConfiguration());
+    String ip = estaConectado() ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+    h += "</pre><p><a class='button secondary' href='/prometheus.yml'>Baixar YAML</a> <a class='button secondary' href='http://" + esc(ip) + ":" + String(config.port) + "/metrics' target='_blank' rel='noopener'>Ver metricas</a></p></article>";
+    h += F("<article class='card section'><h2>Dados disponiveis</h2><p>Identificacao, disponibilidade, Wi-Fi, CPU, tarefas, memoria, flash, botao GPIO0, LED GPIO2 e requisicoes HTTP. Uso de CPU requer duas amostras de 5 segundos e suporte do SDK.</p><p>Energia, bateria, sensores ambientais, reles, ADC e MQTT nao estao integrados: essas series sao omitidas, sem valores ficticios. A temperatura interna da CPU nao representa um sensor ambiental.</p><p>Contadores de boot e watchdog persistem na NVS. HTTP e desconexoes reiniciam no boot. Use a metrica up do Prometheus para detectar dispositivo desligado.</p></article>");
+    if (!metrics.persistenceOk())
+      h += F("<div class='notice section'>Contadores persistentes indisponiveis. Consulte a Serial.</div>");
+    h += portalEnd();
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(status, "text/html; charset=utf-8", h);
+  }
+  void savePrometheus()
+  {
+    String host = server.arg("host");
+    host.trim();
+    uint16_t port, interval;
+    if (!MetricsService::validHost(host) ||
+        !MetricsService::parseNumber(server.arg("port"), 1, 65535, port) ||
+        !MetricsService::parseNumber(server.arg("interval"), 5, 3600, interval))
+    {
+      handlePrometheus(400, "Use IPv4/DNS sem protocolo, porta 1..65535 e intervalo 5..3600 segundos.");
+      return;
+    }
+    if (!metrics.save(host, port, interval))
+    {
+      Serial.println("[METRICS] Falha ao salvar preferencias.");
+      handlePrometheus(503, "Nao foi possivel salvar na NVS. A configuracao ativa foi preservada.");
+      return;
+    }
+    metricsPortPending = port != activeMetricsPort;
+    metricsPortSavedAt = millis();
+    handlePrometheus(200, "Preferencias salvas. Interface web mantida na porta 80. Aplique o YAML no Prometheus.");
+  }
   void carregarRedes(String names[5], String pass[5], int &idx)
   {
     idx = -1;
@@ -351,6 +416,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
 public:
   void begin()
   {
+    metrics.begin();
     carregarRedes(ssids, passwords, lastUsed);
     WiFi.persistent(false);
     WiFi.mode(WIFI_AP_STA);
@@ -368,7 +434,33 @@ public:
               { handleTerminal(); });
     server.on("/cmd", HTTP_POST, [this]()
               { handleCommandAjax(); });
+    auto recordHttp = [this](WebServer &web, Middleware::Callback next)
+    {
+      int64_t start = esp_timer_get_time();
+      bool handled = next();
+      metrics.recordHttp(esp_timer_get_time() - start, web.responseCode());
+      return handled;
+    };
+    server.addMiddleware(recordHttp);
+    metricsServer.addMiddleware(recordHttp);
+    metricsServer.on("/metrics", HTTP_GET, [this]() { sendMetrics(metricsServer); });
+    server.on("/metrics", HTTP_GET, [this]()
+    {
+      if (activeMetricsPort == 80)
+        sendMetrics(server);
+      else
+        server.send(404, "text/plain; charset=utf-8", "Metricas na porta configurada em /prometheus.");
+    });
+    server.on("/prometheus", HTTP_GET, [this]() { handlePrometheus(); });
+    server.on("/prometheus", HTTP_POST, [this]() { savePrometheus(); });
+    server.on("/prometheus.yml", HTTP_GET, [this]()
+    {
+      server.sendHeader("Cache-Control", "no-store");
+      server.sendHeader("Content-Disposition", "attachment; filename=prometheus-esp32.yml");
+      server.send(200, "text/plain; charset=utf-8", metrics.scrapeConfiguration());
+    });
     server.begin();
+    startMetricsServer();
     iniciarUDP();
     oled.setMonitor(&telemetry);
   }
@@ -378,7 +470,12 @@ public:
   {
     uint32_t now = millis();
     telemetry.update();
+    metrics.update();
     server.handleClient();
+    if (activeMetricsPort != 80)
+      metricsServer.handleClient();
+    if (metricsPortPending && millis() - metricsPortSavedAt >= 1000UL)
+      startMetricsServer();
     if (pendingRestart)
     {
       if (int32_t(now - restartAt) >= 0)
