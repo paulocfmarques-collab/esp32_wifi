@@ -106,8 +106,9 @@ ou energização pode acionar o modo de gravação da placa; EN continua sendo r
 
 `tela:0..4`, `tela:next`, `tela:auto` e `clear_log` controlam a exibição.
 
-Após três minutos sem interação, um relógio pequeno se move pela tela, mantendo
-o OLED ligado. Toque curto no botão sai da proteção e avança a página; comandos
+Após três minutos sem interação, seis carinhas desenhadas se movem pela tela,
+piscam e alternam entre sorriso, piscadinha, surpresa e sono, mantendo o OLED
+ligado. A animação atualiza a cada 250 ms. Toque curto no botão sai da proteção e avança a página; comandos
 também encerram a proteção e renovam o tempo de inatividade. Logs automáticos de
 rede não renovam esse tempo. A leitura do botão continua durante a proteção.
 

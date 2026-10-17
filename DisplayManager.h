@@ -21,6 +21,51 @@ class DisplayManager
     }
     uint32_t ultimaInteracao = 0;
 
+    void desenharCarinha(int x, int y, uint8_t expressao, bool piscar)
+    {
+        display.drawCircle(x, y, 9, SSD1306_WHITE);
+        if (piscar || expressao == 3) {
+            display.drawFastHLine(x - 5, y - 2, 3, SSD1306_WHITE);
+            display.drawFastHLine(x + 3, y - 2, 3, SSD1306_WHITE);
+        } else {
+            display.fillCircle(x - 4, y - 2, 1, SSD1306_WHITE);
+            if (expressao == 1)
+                display.drawFastHLine(x + 3, y - 2, 3, SSD1306_WHITE);
+            else
+                display.fillCircle(x + 4, y - 2, 1, SSD1306_WHITE);
+        }
+
+        if (expressao == 2) {
+            display.drawCircle(x, y + 4, 2, SSD1306_WHITE);
+        } else if (expressao == 3) {
+            display.drawFastHLine(x - 2, y + 4, 5, SSD1306_WHITE);
+        } else {
+            display.drawLine(x - 4, y + 2, x - 2, y + 4, SSD1306_WHITE);
+            display.drawFastHLine(x - 2, y + 5, 5, SSD1306_WHITE);
+            display.drawLine(x + 2, y + 4, x + 4, y + 2, SSD1306_WHITE);
+        }
+    }
+
+    void desenharProtecao(uint32_t elapsed)
+    {
+        const uint32_t frame = elapsed / 250;
+        // Seis carinhas em areas separadas, com movimento e expressoes diferentes.
+        const int cellW = Config::SCREEN_WIDTH / 3;
+        const int cellH = Config::SCREEN_HEIGHT / 2;
+        const int rangeX = cellW - 19;
+        const int rangeY = cellH - 19;
+        for (uint8_t i = 0; i < 6; ++i) {
+            const int phaseX = (frame + i * 11) % (2 * rangeX);
+            const int phaseY = (frame + i * 7) % (2 * rangeY);
+            const int x = (i % 3) * cellW + 9 +
+                          (phaseX <= rangeX ? phaseX : 2 * rangeX - phaseX);
+            const int y = (i / 3) * cellH + 9 +
+                          (phaseY <= rangeY ? phaseY : 2 * rangeY - phaseY);
+            desenharCarinha(x, y, (elapsed / 3000 + i) % 4,
+                             (frame + i * 3) % 16 == 0);
+        }
+    }
+
 public:
     DisplayManager() : display(Config::SCREEN_WIDTH, Config::SCREEN_HEIGHT, &Wire, -1) {}
     void begin()
@@ -92,29 +137,23 @@ public:
 void atualizarTela(NTPUtil& ntpService) {
     if (!ready) return;
     uint32_t now = millis();
+    const uint32_t idle = now - ultimaInteracao;
+    const bool protecao = idle >= Config::OLED_TIMEOUT_MS;
 
     // Limita o trafego I2C para manter o loop livre para ler o botao.
-    if (now - rendered < 1000) return;
+    if (now - rendered < (protecao ? 250U : 1000U)) return;
     rendered = now;
 
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    String dt; ntpService.getDateTime(dt, 0); bool valid = dt.length() == 19 && dt.indexOf("Erro") < 0;
-
-    // Relogio em movimento: mantem o OLED ligado sem elementos fixos.
-    if (now - ultimaInteracao >= Config::OLED_TIMEOUT_MS) {
-        const uint32_t step = (now - ultimaInteracao - Config::OLED_TIMEOUT_MS) / 1000;
-        const int maxX = Config::SCREEN_WIDTH - 8 * 6;
-        const int maxY = Config::SCREEN_HEIGHT - 8;
-        const int phaseX = step % (2 * maxX);
-        const int phaseY = (step / 2) % (2 * maxY);
-        display.setCursor(phaseX <= maxX ? phaseX : 2 * maxX - phaseX,
-                          phaseY <= maxY ? phaseY : 2 * maxY - phaseY);
-        display.print(valid ? dt.substring(11) : String("--:--:--"));
+    if (protecao) {
+        desenharProtecao(idle - Config::OLED_TIMEOUT_MS);
         display.display();
         return;
     }
+
+    String dt; ntpService.getDateTime(dt, 0); bool valid = dt.length() == 19 && dt.indexOf("Erro") < 0;
 
     if (int32_t(consoleUntil - now) > 0) {
         display.setCursor(0, 0); display.print(valid ? dt : String("RELOGIO SEM SINCRONIA"));
