@@ -5,6 +5,9 @@
 #include "NetworkManager.h"
 #include "CommandHandler.h"
 #include "NTPUtil.h"
+#include "CrashTrace.h"
+
+RTC_DATA_ATTR CrashBreadcrumb crashBreadcrumb;
 
 void injetarComandoDoWebTerminal(const String& cmd)
 {
@@ -79,9 +82,12 @@ void TaskRede(void* pvParameters)
     // Loop infinito interno do Core 0
     for (;;)
     {
+        CrashTrace::mark(CrashTrace::WebMetrics);
         network.processarWebServer();
+        CrashTrace::mark(CrashTrace::OTA);
         ArduinoOTA.handle();
 
+        CrashTrace::mark(CrashTrace::UDP);
         String command;
         if (network.checarMensagensUDP(command))
         {
@@ -89,13 +95,15 @@ void TaskRede(void* pvParameters)
         }
 
         // Pequeno delay para impedir que a Task trave o Watchdog do Core 0
-        vTaskDelay(pdMS_TO_TICKS(5));
+        CrashTrace::mark(CrashTrace::Idle);
+        vTaskDelay(max(TickType_t(1), pdMS_TO_TICKS(5)));
     }
 }
 
 void setup()
 {
     Serial.begin(115200);
+    CrashTrace::begin();
     hardware.begin();
     oled.begin();
     network.begin();

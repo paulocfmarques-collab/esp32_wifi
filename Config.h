@@ -27,6 +27,12 @@ constexpr const float KB = 1024.0;          // Constante para conversão de byte
 constexpr const char* OTA_HOSTNAME = "ESP32-Network-Hub";
 constexpr const char* OTA_PASSWORD = ""; // Deixe vazio ou coloque uma senha para proteger o upload
 constexpr uint32_t OLED_TIMEOUT_MS = 180000; // Inatividade antes do protetor de tela
+constexpr uint32_t WEATHER_INTERVAL_MS = 600000; // Open-Meteo: dez minutos
+constexpr uint32_t WEATHER_MAX_AGE_S = 3600; // Omite valores climaticos apos uma hora
+constexpr const char* WEATHER_URL =
+    "https://api.open-meteo.com/v1/forecast?latitude=-30.0346&longitude=-51.2177"
+    "&current=temperature_2m,relative_humidity_2m&temperature_unit=celsius"
+    "&timeformat=unixtime&timezone=GMT&forecast_days=1";
 } // namespace Config
 
 #endif

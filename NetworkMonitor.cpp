@@ -2,6 +2,8 @@
 #include "lwip/ip_addr.h"
 void NetworkMonitor::begin()
 {
+    if (!stateMutex) stateMutex = xSemaphoreCreateRecursiveMutex();
+    StateLock lock(stateMutex); if (!lock) return;
     for (int &value : history)
         value = -2;
     tickAt = offlineAt = millis();
@@ -36,6 +38,7 @@ void NetworkMonitor::update()
 {
     if (!initialized)
         begin();
+    StateLock lock(stateMutex); if (!lock) return;
     uint32_t now = millis();
     bool online = WiFi.status() == WL_CONNECTED;
     // Incremental accounting also handles millis() rollover.
@@ -134,4 +137,20 @@ void NetworkMonitor::update()
         esp_ping_delete_session(session);
         session = nullptr;
     }
+}
+bool NetworkMonitor::snapshot(Snapshot &out) const
+{
+    // Nao espera por ping/rede; o OLED usa uma copia consistente ou tenta depois.
+    StateLock lock(stateMutex, 0); if (!lock) return false;
+    out.hasResult = hasResult;
+    out.replied = replied;
+    out.drops = drops;
+    out.attempts = attempts;
+    out.failures = failures;
+    out.rtt = rtt;
+    out.offlineSeconds = offlineSeconds();
+    out.head = head;
+    for (int i = 0; i < 24; ++i) out.history[i] = history[i];
+    for (int i = 0; i < 3; ++i) out.events[i] = events[i];
+    return true;
 }

@@ -18,7 +18,7 @@ Inclui também coleta Prometheus com configuração persistente pela interface w
 | Métricas Prometheus | Porta configurável, padrão 9120 |
 | Fuso padrão | UTC -3 |
 
-Use a mesma seleção de placa ESP32 da aplicação original e Arduino-ESP32 3.x,
+Use a mesma seleção de placa ESP32 da aplicação original e Arduino-ESP32 3.3.12,
 Adafruit SSD1306 e Adafruit GFX. O ping usa `ping/ping_sock.h` nativo do ESP-IDF.
 Não foram adicionados periféricos Ethernet ou cartão SD.
 
@@ -64,11 +64,18 @@ no AP. Se a porta de coleta também for 80, os serviços compartilham o servidor
 outras portas atendem somente `/metrics`.
 
 Há métricas de identificação, disponibilidade, Wi-Fi, CPU, tarefas, memória,
-flash, botão, LED e HTTP. Energia, bateria, sensores ambientais, relés, ADC e
-MQTT ainda não têm integração: essas séries são omitidas, sem valores fictícios.
+flash, botão, LED e HTTP. Temperatura e umidade de Porto Alegre são consultadas
+no Open-Meteo a cada dez minutos em uma tarefa separada, sem bloquear o scrape.
+As séries `sensor_temperature_celsius` e `sensor_humidity_percent` usam
+`source="open_meteo",location="porto_alegre"`; a idade é exportada em
+`esp_weather_data_age_seconds`. A coleta requer Internet e NTP; as séries surgem
+após a primeira resposta válida e valores com mais de uma hora são omitidos.
+Energia, bateria, sensores ambientais locais, relés, ADC e MQTT ainda não têm
+integração: essas séries são omitidas, sem valores fictícios.
 Consulte [PROMETHEUS.md](PROMETHEUS.md) para o inventário, exemplos e limitações.
 
 O portal funciona sem Internet e não busca fontes, estilos ou scripts externos.
+Somente a consulta de clima depende do serviço externo Open-Meteo.
 Senhas salvas nunca são enviadas ao navegador. Senha vazia mantém a anterior
 apenas quando o SSID não muda; marque Rede aberta para gravar sem senha.
 Apagar o SSID remove o perfil.
@@ -105,6 +112,17 @@ ou energização pode acionar o modo de gravação da placa; EN continua sendo r
 
 `tela:0..4`, `tela:next`, `tela:auto` e `clear_log` controlam a exibição.
 
+Após três minutos sem interação, uma carinha sem moldura ocupa o OLED inteiro,
+com olhos e boca ampliados. São dez expressões: sorriso, piscadinha, tristeza,
+bravo, neutro, olhos de coração, surpresa, sono, alegria e preocupação.
+A expressão muda a cada quatro segundos, com piscadas e movimento dos olhos.
+O rosto se desloca levemente dentro dos 128×64 pixels, com atualização a cada
+100 ms e o display sempre ligado. A animação funciona mesmo sem horário NTP.
+
+Toque curto no botão encerra a proteção e avança a página ao soltar. Comandos
+também encerram a proteção e renovam o tempo de inatividade; logs automáticos
+de rede não renovam esse tempo. A pressão longa para limpeza continua disponível.
+
 ## Monitor de rede e horário
 
 Ping ICMP ao gateway a cada aproximadamente cinco segundos, com timeout de um
@@ -121,13 +139,23 @@ mostram estado de espera. Hora válida não comprova alcance atual dos servidore
 ## Comandos e validação
 
 Lista completa em `COMANDOS.md`, também disponível pelo comando `help`.
+O comando `crash_info` informa o último reset, contadores persistentes de
+boot/watchdog e memória do boot atual. O total de watchdogs é acumulado na NVS.
+Após panic/watchdog, um rastro RTC pode indicar a última etapa da tarefa de rede
+e o último nome de comando, sem argumentos; ele não recupera falhas anteriores
+à instalação desta revisão. Backtrace e registradores da falha não
+são armazenados; consulte [COMANDOS.md](COMANDOS.md) para as limitações.
 LED contínuo e sequências finitas executam sem bloquear; `led_on`/`led_off`
 cancelam qualquer sequência. Credenciais são ocultadas dos logs.
 
 Foram realizadas verificações estáticas de estrutura, includes locais, integração,
 preservação dos comandos, documentação e ZIP. Compilação e testes na placa ainda
 precisam ser feitos. Verifique o primeiro boot, salvamento dos perfis, reconexão,
-AP/UDP, todas as telas, LED, botão e NTP com sua placa.
+AP/UDP, todas as telas, LED, botão e NTP com sua placa. Para conferir a proteção,
+aguarde três minutos sem interação e acompanhe um ciclo de 40 segundos das dez
+expressões. Verifique que os desenhos ficam dentro da tela e que um toque curto
+retorna às páginas. A aparência e a resposta física do botão precisam ser
+validadas no OLED real.
 
 Referências: [Wi-Fi Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
 e [ICMP Echo Espressif](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/icmp_echo.html).

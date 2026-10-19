@@ -7,6 +7,7 @@
 #include "HardwareController.h"
 #include "NetworkManager.h"
 #include "NTPUtil.h"
+#include "CrashTrace.h"
 
 class CommandHandler
 {
@@ -105,6 +106,7 @@ class CommandHandler
         nome.toLowerCase();
         if (nome == "restart")
             nome = "reboot";
+        CrashTrace::command(nome);
         cmd = nome + (separator < 0 ? String("") : String(":") + arg);
         String visible = nome == "wifi_add" ? String("wifi_add:[credenciais ocultas]") : cmd;
         if (nome != "lastcmd" && nome != "cmdcount")
@@ -121,8 +123,9 @@ class CommandHandler
         if (cmd == "help")
         {
             network.responderUDP(
-                "Sistema: help info status reason version build reboot alive uptime lastcmd "
-                "cmdcount health\n"
+                "Sistema: help info status reason crash_info version build reboot alive uptime "
+                "lastcmd name "
+                "cmdcount health reset_counters\n"
                 "Hardware: cpu chip_info ram heap heap_min psram flash temp\n"
                 "Rede: net_info net_monitor wifi_status wifi_list wifi_add:SSID|SENHA ssid channel "
                 "mac rssi ip reset_wifi\n"
@@ -131,6 +134,16 @@ class CommandHandler
                 "OLED: tela:0..4 tela:next tela:auto clear_log\n"
                 "wifi_add: cinco perfis circulares, senha vazia = rede aberta; reboot aplica.\n"
                 "reset_wifi limpa redes, fuso e DST; firmware permanece. restart = reboot.\n");
+        }
+        else if (nome == "reset_counters")
+        {
+            network.responderUDP(network.resetCounters()
+                                     ? "Contadores NVS de boot/watchdog zerados.\n"
+                                     : "Erro ao zerar contadores NVS.\n");
+        }
+        else if (nome == "name")
+        {
+            network.responderUDP("ESP32\n");
         }
         else if (nome == "tela")
         {
@@ -275,6 +288,38 @@ class CommandHandler
                    " s\n"
                    "========================";
             network.responderUDP(resp + "\n");
+        }
+        else if (cmd == "crash_info")
+        {
+            const esp_reset_reason_t reason = esp_reset_reason();
+            String tipo = "Reset sem indicacao de crash";
+            if (reason == ESP_RST_PANIC)
+                tipo = "Panic / excecao";
+            else if (reason == ESP_RST_INT_WDT || reason == ESP_RST_TASK_WDT ||
+                     reason == ESP_RST_WDT)
+                tipo = "Watchdog";
+            else if (reason == ESP_RST_BROWNOUT)
+                tipo = "Queda de tensao (brownout)";
+            else if (reason == ESP_RST_UNKNOWN)
+                tipo = "Causa desconhecida";
+
+            resp.reserve(1024);
+            resp = "===== CRASH INFO =====\n";
+            resp += "Ultimo reset: " + obterMotivoReset() + "\n";
+            resp += "Codigo do reset: " + String(static_cast<int>(reason)) + "\n";
+            resp += "Classificacao: " + tipo + "\n";
+            resp += network.bootDiagnostics();
+            resp += CrashTrace::report();
+            resp += "Firmware atual: 2.0.0 / build " + obterVersaoAutomatica() + "\n";
+            resp += "SDK atual: " + String(ESP.getSdkVersion()) + "\n";
+            resp += "Uptime atual: " + String(millis() / 1000) + " s\n";
+            CrashTrace::mark(CrashTrace::CrashMemory);
+            resp += "Heap livre atual: " + String(ESP.getFreeHeap()) + " B\n";
+            resp += "Heap minimo neste boot: " + String(ESP.getMinFreeHeap()) + " B\n";
+            resp += "Backtrace/registradores da falha: nao armazenados pelo firmware.\n";
+            resp += "Reset refere-se ao boot atual; memoria nao e a do instante da falha.\n";
+            CrashTrace::mark(CrashTrace::CrashReply);
+            network.responderUDP(resp);
         }
         else if (cmd == "version")
         {

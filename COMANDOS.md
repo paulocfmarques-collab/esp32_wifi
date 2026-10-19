@@ -1,10 +1,18 @@
 # Comandos — ESP32 Wi-Fi / OLED 2.0.0
 
+Revisão documental: **31/10/2026**. Consulte [CHANGELOG.md](CHANGELOG.md)
+e o [catálogo geral](../../ESP32_Documents/COMANDOS.md).
+
 Envie por **UDP 4210** ao IP STA ou ao IP AP **192.168.4.1**. Limite de entrada:
 **255 bytes**. Os nomes são normalizados para minúsculas; os argumentos preservam
 caixa e espaços. Comandos que alteram dados executam diretamente no dispositivo.
 
 ## Prometheus e interface web
+
+As métricas climáticas de Porto Alegre são coletadas automaticamente do Open-Meteo,
+sem novo comando UDP. Temperatura e umidade usam `source="open_meteo"` e
+`location="porto_alegre"`. Consultas do Grafana, idade e validade do cache estão
+documentadas em [PROMETHEUS.md](PROMETHEUS.md).
 
 A configuração Prometheus é feita exclusivamente pela página
 `http://IP_DO_ESP32/prometheus`, na **porta 80**; não foram adicionados comandos
@@ -30,6 +38,8 @@ falha de gravação retorna 503, preservando a configuração ativa.
 
 `reset_wifi` e a limpeza pelo botão não apagam as configurações Prometheus nem
 os contadores de boot/watchdog, armazenados no namespace NVS `telemetry`.
+Use `reset_counters` para zerar somente esses contadores, preservando as
+configurações Prometheus.
 Inventário de métricas e limitações em [PROMETHEUS.md](PROMETHEUS.md).
 
 ## Sistema
@@ -37,12 +47,15 @@ Inventário de métricas e limitações em [PROMETHEUS.md](PROMETHEUS.md).
 | Comando | Função |
 |---|---|
 | `help` | Lista todos os comandos. |
+| `name` | Identifica o dispositivo; responde `ESP32`. |
 | `info` | Informações completas do dispositivo. |
 | `status` | Resumo de Wi-Fi, relógio e heap. |
 | `reason` | Motivo do último reset. |
+| `crash_info` | Diagnóstico do último reset, contadores persistentes de boot/watchdog e memória atual. |
 | `version` | Versão 2.0.0 e identificação da compilação. |
 | `build` | Data e hora da compilação. |
 | `reboot` | Responde e reinicia. |
+| `reset_counters` | Zera somente os contadores NVS de boot/watchdog; preserva as configurações Prometheus. |
 | `alive` | Teste de resposta do dispositivo. |
 | `uptime` | Tempo ligado em segundos. |
 | `lastcmd` | Último comando, com credenciais ocultas. |
@@ -127,6 +140,8 @@ set_fuso:-3
 ```
 
 `restart` é alias de `reboot`.
+Não há comandos `protetor:*` neste handler. A carinha
+automática não altera a sintaxe dos cinco painéis OLED.
 
 ## Redes circulares
 
@@ -147,17 +162,56 @@ Telas atualizam uma vez por segundo e alternam automaticamente a cada oito segun
 Comandos/eventos podem exibir o console por cinco segundos. Selecionar uma tela
 cancela esse intervalo para exibi-la na próxima atualização.
 
+Após três minutos sem interação, a proteção mostra uma carinha por vez, sem
+moldura, com olhos e boca ampliados para a tela OLED 128×64. São dez expressões:
+sorriso, piscadinha, tristeza, bravo, neutro, corações, surpresa, sono, alegria e
+preocupação. A troca ocorre a cada quatro segundos; piscadas, movimento dos olhos
+e deslocamento do rosto são atualizados a cada 100 ms. O OLED permanece ligado
+e a animação não depende do NTP.
+
+Comandos encerram a proteção e reiniciam a contagem de inatividade.
+`tela:0..4` e `tela:next` selecionam a página e desativam a rotação;
+`tela:auto` retoma a rotação. Logs automáticos de rede não reiniciam a contagem.
+Não há comando específico para selecionar uma expressão.
+
 GPIO 0 / BOOT: toque curto e solte para avançar; segure cinco segundos e solte
 para limpar redes, fuso e DST e reiniciar. Funciona também sem Wi-Fi.
+Durante a proteção, pressionar o botão retorna às páginas e soltar após um toque
+curto avança a tela. A pressão longa mantém a função de limpeza.
 Segurar BOOT durante reset/alimentação pode entrar no modo de gravação da placa.
 O EN continua sendo reset físico.
 
 ## Diagnósticos
 
+`crash_info` é uma consulta sem argumentos. Informa o motivo e o código do reset
+que iniciou o boot atual, classificando panic/exceção, watchdog e brownout.
+Inclui contadores de boots, reinicializações e resets por watchdog já mantidos
+na NVS pelo serviço de métricas. Se a persistência falhar, informa que os
+contadores estão indisponíveis. O total de watchdogs é acumulado na NVS entre
+reinicializações, não é uma contagem apenas deste boot nem do comando enviado.
+Não há um contador separado de panics.
+
+Também mostra firmware/SDK atuais, uptime, heap livre e menor heap deste boot.
+Esses valores não são uma captura da memória na falha. A consulta não busca o
+maior bloco livre do heap.
+
+Um rastro em memória RTC registra a última etapa observada da tarefa de rede,
+o uptime nessa etapa e o último nome de comando, sem argumentos ou senhas.
+Após panic/watchdog, `crash_info` exibe esse rastro quando disponível. Ele só
+passa a ser coletado após instalar esta revisão e não recupera falhas antigas.
+O rastro pode se perder ao cortar a alimentação e não identifica sozinho a
+causa do travamento nem a tarefa culpada. Não é um histórico de falhas.
+
+O firmware não armazena backtrace nem registradores;
+um novo reset substitui a causa anterior. Para investigar a exceção, capture a
+saída Serial a 115200 baud durante a falha. O comando usa a resposta UDP normal
+do projeto, na porta 4210, e também encerra a proteção de tela.
+
 Ping ICMP ao gateway: uma medição aproximadamente a cada cinco segundos, timeout
 um segundo, em tarefa separada. O gráfico usa barras para RTT e X para timeout;
 a escala é adaptativa. Um timeout pode significar bloqueio de ICMP e não comprova
 queda de Wi-Fi ou ausência de Internet. O histórico e as estatísticas ficam na RAM,
-são observados pelo loop e reiniciam no boot.
+são atualizados pela tarefa de rede e reiniciam no boot. O OLED lê uma cópia
+protegida para evitar acesso simultâneo aos textos do histórico.
 `health` consulta estados disponíveis; não executa teste físico do hardware.
 `ntp_status` consulta a validade do relógio, sem disparar um teste NTP.

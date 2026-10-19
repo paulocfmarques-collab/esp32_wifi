@@ -97,7 +97,7 @@ class DeviceNetwork
     h += esc(metrics.scrapeConfiguration());
     String ip = estaConectado() ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
     h += "</pre><p><a class='button secondary' href='/prometheus.yml'>Baixar YAML</a> <a class='button secondary' href='http://" + esc(ip) + ":" + String(config.port) + "/metrics' target='_blank' rel='noopener'>Ver metricas</a></p></article>";
-    h += F("<article class='card section'><h2>Dados disponiveis</h2><p>Identificacao, disponibilidade, Wi-Fi, CPU, tarefas, memoria, flash, botao GPIO0, LED GPIO2 e requisicoes HTTP. Uso de CPU requer duas amostras de 5 segundos e suporte do SDK.</p><p>Energia, bateria, sensores ambientais, reles, ADC e MQTT nao estao integrados: essas series sao omitidas, sem valores ficticios. A temperatura interna da CPU nao representa um sensor ambiental.</p><p>Contadores de boot e watchdog persistem na NVS. HTTP e desconexoes reiniciam no boot. Use a metrica up do Prometheus para detectar dispositivo desligado.</p></article>");
+    h += F("<article class='card section'><h2>Dados disponiveis</h2><p>Identificacao, disponibilidade, Wi-Fi, CPU, tarefas, memoria, flash, botao GPIO0, LED GPIO2 e requisicoes HTTP. Uso de CPU requer duas amostras de 5 segundos e suporte do SDK.</p><p>Temperatura e umidade de Porto Alegre sao consultadas no Open-Meteo a cada dez minutos. Requer Internet e horario sincronizado. As series sensor_temperature_celsius e sensor_humidity_percent usam source=open_meteo e location=porto_alegre. esp_weather_data_age_seconds informa a idade do dado e esp_weather_up o estado da coleta.</p><p>Energia, bateria, sensores ambientais locais, reles, ADC e MQTT nao estao integrados: essas series sao omitidas, sem valores ficticios. A temperatura interna da CPU nao representa um sensor ambiental.</p><p>Contadores de boot e watchdog persistem na NVS. HTTP e desconexoes reiniciam no boot. Use a metrica up do Prometheus para detectar dispositivo desligado.</p></article>");
     if (!metrics.persistenceOk())
       h += F("<div class='notice section'>Contadores persistentes indisponiveis. Consulte a Serial.</div>");
     h += portalEnd();
@@ -414,12 +414,19 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
   }
 
 public:
+  bool resetCounters()
+  {
+    return metrics.resetCounters();
+  }
+
   void begin()
   {
     metrics.begin();
     carregarRedes(ssids, passwords, lastUsed);
     WiFi.persistent(false);
     WiFi.mode(WIFI_AP_STA);
+    // Inicializa o mutex do monitor antes de publicar seu ponteiro ao OLED.
+    telemetry.begin();
     WiFi.setAutoReconnect(false);
     openAP();
     server.on("/", HTTP_GET, [this]()
@@ -584,6 +591,7 @@ public:
     udp.print(s);
     udp.endPacket();
   }
+  String bootDiagnostics() const { return metrics.bootDiagnostics(); }
   void responderUDPPrintf(const char *format, ...)
   {
     char buf[768];

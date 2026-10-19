@@ -10,6 +10,7 @@
 #include <freertos/task.h>
 #include <atomic>
 #include "Config.h"
+#include "WeatherService.h"
 
 class MetricsService
 {
@@ -24,6 +25,7 @@ public:
 
 private:
   Settings settings{};
+  WeatherService weather;
   struct BootRecord
   {
     uint32_t version, boots, watchdogs;
@@ -110,6 +112,32 @@ public:
   }
   const Settings &configuration() const { return settings; }
   bool persistenceOk() const { return countersOk; }
+  bool resetCounters()
+  {
+    Preferences prefs;
+    if (!prefs.begin("telemetry", false))
+    {
+      countersOk = false;
+      return false;
+    }
+    BootRecord zero{1, 0, 0};
+    bool ok = prefs.putBytes("boots", &zero, sizeof(zero)) == sizeof(zero);
+    prefs.end();
+    countersOk = ok;
+    if (ok)
+    {
+      boots = zero;
+    }
+    return ok;
+  }
+  String bootDiagnostics() const
+  {
+    if (!countersOk)
+      return "Contadores NVS: indisponiveis (falha de leitura/gravacao)\n";
+    return "Boots registrados: " + String(boots.boots) +
+           "\nReinicializacoes registradas: " + String(boots.boots ? boots.boots - 1 : 0) +
+           "\nResets por watchdog (acumulados NVS): " + String(boots.watchdogs) + "\n";
+  }
   bool save(const String &host, uint16_t port, uint16_t interval)
   {
     if (!validHost(host) || !port || interval < 5 || interval > 3600)
@@ -175,6 +203,7 @@ public:
       Serial.println("[METRICS] NVS indisponivel; usando configuracao padrao.");
     if (!countersOk)
       Serial.println("[METRICS] Contadores persistentes indisponiveis.");
+    weather.begin();
     WiFi.onEvent([this](WiFiEvent_t, WiFiEventInfo_t) { disconnects.fetch_add(1); },
                  ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   }
@@ -272,6 +301,20 @@ public:
     float temperature = temperatureRead();
     if (isfinite(temperature))
       sample(out, "esp_cpu_temperature_celsius", "gauge", String(temperature, 2));
+    const auto climate = weather.snapshot();
+    const String climateLabels = "source=\"open_meteo\",location=\"porto_alegre\"";
+    const double climateAge = climate.valid ? WeatherService::ageSeconds(climate) : 0;
+    const bool fresh = climate.valid && climateAge <= Config::WEATHER_MAX_AGE_S;
+    sample(out, "esp_weather_up", "gauge",
+           climate.lastAttemptOk && connected && fresh ? "1" : "0", climateLabels);
+    if (climate.valid) {
+      sample(out, "esp_weather_data_age_seconds", "gauge", String(climateAge, 1), climateLabels);
+      sample(out, "esp_weather_data_timestamp_seconds", "gauge", String(climate.sourceTime, 0), climateLabels);
+    }
+    if (fresh) {
+      sample(out, "sensor_temperature_celsius", "gauge", String(climate.temperature, 2), climateLabels);
+      sample(out, "sensor_humidity_percent", "gauge", String(climate.humidity, 2), climateLabels);
+    }
     sample(out, "gpio_digital_input", "gauge", String(digitalRead(Config::PIN_BOTAO_RESET) == HIGH ? 1 : 0),
            label("pin", String(Config::PIN_BOTAO_RESET)));
     sample(out, "gpio_digital_output", "gauge", String(digitalRead(Config::PIN_LED) == HIGH ? 1 : 0),

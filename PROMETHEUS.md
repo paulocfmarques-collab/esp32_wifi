@@ -109,6 +109,57 @@ de exposição é Prometheus **0.0.4**.
 | Aplicação | `application_errors_total` | Counter de requisições HTTP com status 4xx/5xx ou sem código de resposta. |
 | Aplicação | `application_response_time_ms` | Gauge de duração do tratamento da última requisição concluída. |
 | Adicional | `esp_cpu_temperature_celsius` | Temperatura interna da CPU quando válida; não é temperatura ambiente. |
+| Clima Porto Alegre | `sensor_temperature_celsius` | Temperatura do ar a 2 m do Open-Meteo, em °C; labels `source="open_meteo"` e `location="porto_alegre"`. |
+| Clima Porto Alegre | `sensor_humidity_percent` | Umidade relativa do ar a 2 m do Open-Meteo, em %; mesmos labels. |
+| Clima Porto Alegre | `esp_weather_up` | 1 se a última consulta foi válida, o cache está recente e o Wi-Fi conectado; 0 caso contrário. |
+| Clima Porto Alegre | `esp_weather_data_age_seconds` | Idade do dado desde o horário `current.time` da API; omitida antes do primeiro dado válido. |
+| Clima Porto Alegre | `esp_weather_data_timestamp_seconds` | Horário Unix do dado climático fornecido pela API. |
+
+### Clima de Porto Alegre e consultas do Grafana
+
+O firmware consulta o [Open-Meteo](https://open-meteo.com/en/docs) para as coordenadas
+de Porto Alegre (-30.0346, -51.2177), com `current=temperature_2m,relative_humidity_2m`.
+São dados de modelo meteorológico, não leituras de um sensor físico conectado ao ESP32.
+A temperatura interna da CPU continua separada em `esp_cpu_temperature_celsius`.
+
+A consulta HTTPS é executada por uma tarefa própria a cada dez minutos, com nova
+tentativa após um minuto em falha. Requer Internet, DNS, relógio sincronizado e
+o bundle de certificados do Arduino-ESP32 3.3.12. Não é feita durante o scrape:
+`/metrics` lê um cache sincronizado, sem esperar pelo servidor meteorológico.
+O parser cJSON é o componente já incluído no ESP-IDF; não requer ArduinoJson.
+
+Antes da primeira resposta válida, temperatura, umidade e idade são omitidas,
+e `esp_weather_up` vale 0. Em falha posterior, o último dado é preservado e sua
+idade continua aumentando. Temperatura e umidade são omitidas quando o dado
+passa de uma hora de idade; a idade e o timestamp continuam visíveis.
+O cache não é gravado na NVS e reinicia com a placa. Nenhum zero climático é
+publicado para substituir falhas. Um valor real de 0 °C ou 0% continua válido.
+
+As consultas solicitadas podem ser usadas diretamente no Grafana:
+
+```promql
+sensor_temperature_celsius{source="open_meteo",location="porto_alegre"}
+and on(instance, job) esp_info{model="$device"}
+```
+
+```promql
+sensor_humidity_percent{location="porto_alegre"}
+and on(instance, job) esp_info{model="$device"}
+```
+
+Para o painel de idade da imagem:
+
+```promql
+esp_weather_data_age_seconds{source="open_meteo",location="porto_alegre"}
+and on(instance, job) esp_info{model="$device"}
+```
+
+`$device` deve conter o modelo `ESP32-WiFi-OLED`, conforme o label `model` de
+`esp_info`. `instance` e `job` são adicionados pelo Prometheus durante a coleta;
+não devem ser fixados no firmware. Todas essas séries saem do mesmo endpoint
+que `esp_info` e também têm o label `device` com o MAC da placa. Assim, a consulta
+antiga `esp_weather_data_age_seconds and on(device) esp_info{model="$device"}`
+também funciona. O firmware não modifica automaticamente o dashboard do Grafana.
 
 ### Limitações e interpretação
 
@@ -137,13 +188,13 @@ valores simulados.
 |---|---|---|
 | Energia | `esp_voltage_v`, `esp_current_ma`, `esp_power_w` | Medidor elétrico e leitura calibrada. |
 | Bateria | `esp_battery_percent`, `esp_battery_voltage_v` | Bateria monitorada e circuito/calibração. |
-| Ambiente | `sensor_temperature_celsius`, `sensor_humidity_percent`, `sensor_pressure_hpa`, `sensor_air_quality` | Sensores ambientais, pinos e drivers. |
+| Ambiente local | `sensor_pressure_hpa`, `sensor_air_quality` e leituras locais de temperatura/umidade | Sensores ambientais, pinos e drivers. Temperatura/umidade de Porto Alegre vêm do Open-Meteo, conforme acima. |
 | Relés | `relay_state`, `relay_activation_count`, `relay_runtime_seconds` | Relés definidos e instrumentação dos acionamentos/tempo ligado. |
 | ADC | `gpio_analog_value` | Entrada analógica definida, circuito e calibração. |
 | MQTT | `mqtt_connected`, `mqtt_messages_sent`, `mqtt_messages_received`, `mqtt_publish_errors` | Cliente MQTT, broker e contagem dos eventos reais. |
 
 A temperatura interna do chip não é publicada como `sensor_temperature_celsius`.
-O projeto não consulta serviço meteorológico nem usa MQTT.
+O projeto consulta o Open-Meteo para Porto Alegre; não usa MQTT.
 
 ## Diagnóstico
 
@@ -179,6 +230,12 @@ A compilação não comprova operação em hardware. Após gravar, verifique:
 4. Reiniciar e confirmar configurações preservadas e incremento de boot.
 5. Aplicar o YAML no Prometheus e confirmar `up=1` e as séries disponíveis.
 6. Verificar os recursos anteriores: Wi-Fi, UDP, OTA, OLED, botão, LED e NTP.
+7. Com Internet e NTP, aguardar a primeira consulta e conferir `esp_weather_up=1`,
+   temperatura, umidade e idade com `source="open_meteo",location="porto_alegre"`.
+8. Testar as três consultas do Grafana com `$device=ESP32-WiFi-OLED`. Confirmar
+   os labels `instance`/`job` no Prometheus, e não apenas no texto de `/metrics`.
+9. Interromper a Internet e verificar idade crescente, estado de coleta 0 e
+   omissão de temperatura/umidade após uma hora, sem bloquear OLED, UDP ou OTA.
 
 Referências:
 [modelo de coleta Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/),
