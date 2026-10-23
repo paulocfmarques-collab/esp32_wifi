@@ -73,6 +73,10 @@ após a primeira resposta válida e valores com mais de uma hora são omitidos.
 Energia, bateria, sensores ambientais locais, relés, ADC e MQTT ainda não têm
 integração: essas séries são omitidas, sem valores fictícios.
 Consulte [PROMETHEUS.md](PROMETHEUS.md) para o inventário, exemplos e limitações.
+Os servidores HTTP têm espera inicial limitada, inatividade de leitura de
+250 ms e envio das respostas normais limitado a um segundo, com pausas para
+as demais tarefas. Interrupções são contadas em `esp_http_rejected_requests_total`
+e `esp_http_aborted_responses_total`; consulte também os limites dessa adaptação.
 
 O portal funciona sem Internet e não busca fontes, estilos ou scripts externos.
 Somente a consulta de clima depende do serviço externo Open-Meteo.
@@ -97,6 +101,11 @@ SSID no console do OLED e na página de rede.
 `wifi_add` salva perfis na lista circular; consulte `COMANDOS.md` para detalhes.
 O UDP também funciona no AP. Nomes de comandos não diferenciam maiúsculas e
 minúsculas; argumentos preservam caixa. Pacotes acima de 255 bytes são rejeitados.
+O UDP 4210 tem abertura verificada e recuperação após mudanças de rede ou erros
+detectados no socket. Tentativas de abertura malsucedidas são repetidas a cada
+cinco segundos. Métricas `esp_udp_*` permitem comparar recebimento e respostas
+quando o HTTP/Prometheus funciona, mas os comandos não respondem; veja
+[PROMETHEUS.md](PROMETHEUS.md). Use o IP atual e envie por UDP, não TCP.
 
 ## Telas e botão
 
@@ -145,6 +154,11 @@ Após panic/watchdog, um rastro RTC pode indicar a última etapa da tarefa de re
 e o último nome de comando, sem argumentos; ele não recupera falhas anteriores
 à instalação desta revisão. Backtrace e registradores da falha não
 são armazenados; consulte [COMANDOS.md](COMANDOS.md) para as limitações.
+Pedidos ao OLED passam por uma fila sem espera; o atendimento UDP não aguarda
+o mutex da tela. O loop dos periféricos é o único que altera a exibição.
+Saturação da fila é contada em `esp_oled_events_dropped_total`.
+O rastro de diagnóstico usa memória RTC não inicializada desde 2026-10-20,
+para preservação entre novos resets sem corte de alimentação.
 LED contínuo e sequências finitas executam sem bloquear; `led_on`/`led_off`
 cancelam qualquer sequência. Credenciais são ocultadas dos logs.
 

@@ -2,9 +2,14 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WebServer.h>
+#include "BoundedWebServer.h"
 #include <Preferences.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <errno.h>
+#include <atomic>
+#include "StateLock.h"
+#include "CrashTrace.h"
 #include "Config.h"
 #include "DisplayManager.h"
 #include "HardwareController.h"
@@ -52,13 +57,17 @@ static String metric(const char *title, const String &value, const char *hint)
 
 class DeviceNetwork
 {
-  WebServer server{80};
-  WebServer metricsServer{9120};
+  BoundedWebServer server{80};
+  BoundedWebServer metricsServer{9120};
   MetricsService metrics;
   uint16_t activeMetricsPort = 9120;
   bool metricsPortPending = false;
   uint32_t metricsPortSavedAt = 0;
   WiFiUDP udp;
+  SemaphoreHandle_t udpMutex = nullptr;
+  std::atomic<bool> udpRebindRequested{false};
+  bool udpReady = false, udpEverBound = false, udpTried = false;
+  uint32_t udpLastAttempt = 0;
   Preferences prefs;
   NetworkMonitor telemetry;
   static const int MAX_REDES = 5;
@@ -67,10 +76,36 @@ class DeviceNetwork
   uint32_t restartAt = 0, phaseAt = 0, retryAt = 0;
   uint8_t phase = 0, attempted = 0;
   int lastUsed = -1, slot = -1;
+  void maintainUdp()
+  {
+    // Chamado somente com udpMutex adquirido, na tarefa de rede.
+    const bool requested = udpRebindRequested.exchange(false);
+    if (requested) {
+      udp.stop();
+      udpReady = false;
+      metrics.setUdpListening(false);
+    }
+    if (udpReady) return;
+    const uint32_t now = millis();
+    if (udpTried && now - udpLastAttempt < 5000UL) return;
+    udpTried = true;
+    udpLastAttempt = now;
+    udp.stop();
+    udpReady = udp.begin(Config::UDP_PORT) == 1;
+    metrics.recordUdpBind(udpReady, udpEverBound);
+    if (udpReady) udpEverBound = true;
+    Serial.printf("[UDP] Porta %u: %s\n", Config::UDP_PORT,
+                  udpReady ? "escutando" : "falha; nova tentativa em 5s");
+  }
   void sendMetrics(WebServer &web)
   {
+    CrashTrace::mark(CrashTrace::MetricsBuild);
+    metrics.recordHttpLimits(server.rejectedRequests(), server.abortedResponses(),
+                            metricsServer.rejectedRequests(), metricsServer.abortedResponses());
+    const String payload = metrics.exposition();
+    CrashTrace::mark(CrashTrace::MetricsSend);
     web.sendHeader("Cache-Control", "no-store");
-    web.send(200, "text/plain; version=0.0.4; charset=utf-8", metrics.exposition());
+    web.send(200, "text/plain; version=0.0.4; charset=utf-8", payload);
   }
   void startMetricsServer()
   {
@@ -421,6 +456,12 @@ public:
 
   void begin()
   {
+    udpMutex = xSemaphoreCreateRecursiveMutex();
+    WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t) {
+      if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP || event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED ||
+          event == ARDUINO_EVENT_WIFI_AP_START || event == ARDUINO_EVENT_WIFI_AP_STOP)
+        udpRebindRequested.store(true);
+    });
     metrics.begin();
     carregarRedes(ssids, passwords, lastUsed);
     WiFi.persistent(false);
@@ -476,11 +517,17 @@ public:
   void processarWebServer()
   {
     uint32_t now = millis();
+    CrashTrace::mark(CrashTrace::MonitorUpdate);
     telemetry.update();
+    CrashTrace::mark(CrashTrace::CpuMetrics);
     metrics.update();
+    CrashTrace::mark(CrashTrace::PortalHttp);
     server.handleClient();
-    if (activeMetricsPort != 80)
+    if (activeMetricsPort != 80) {
+      CrashTrace::mark(CrashTrace::MetricsHttp);
       metricsServer.handleClient();
+    }
+    CrashTrace::mark(CrashTrace::NetworkMaintenance);
     if (metricsPortPending && millis() - metricsPortSavedAt >= 1000UL)
       startMetricsServer();
     if (pendingRestart)
@@ -573,7 +620,14 @@ public:
     prefs.end();
     return ok;
   }
-  void iniciarUDP() { udp.begin(Config::UDP_PORT); }
+  void iniciarUDP() {
+    StateLock lock(udpMutex); if (!lock) {
+      Serial.println("[UDP] Mutex indisponivel");
+      return;
+    }
+    udpRebindRequested.store(true);
+    maintainUdp();
+  }
   void iniciarPortal() { openAP(); }
   void pararPortal()
   {
@@ -585,11 +639,21 @@ public:
   }
   void responderUDP(const String &s)
   {
-    if (!udp.remoteIP())
+    StateLock lock(udpMutex); if (!lock) return;
+    if (!udpReady || !udp.remoteIP() || !udp.remotePort()) return;
+    if (udp.beginPacket(udp.remoteIP(), udp.remotePort()) != 1) {
+      metrics.recordUdpSend(false);
+      metrics.setUdpListening(false);
+      udpRebindRequested.store(true);
       return;
-    udp.beginPacket(udp.remoteIP(), udp.remotePort());
-    udp.print(s);
-    udp.endPacket();
+    }
+    const size_t written = udp.print(s);
+    const bool ok = udp.endPacket() == 1 && written == s.length();
+    metrics.recordUdpSend(ok);
+    if (!ok) {
+      metrics.setUdpListening(false);
+      udpRebindRequested.store(true);
+    }
   }
   String bootDiagnostics() const { return metrics.bootDiagnostics(); }
   void responderUDPPrintf(const char *format, ...)
@@ -603,20 +667,37 @@ public:
   }
   bool checarMensagensUDP(String &s)
   {
+    StateLock lock(udpMutex); if (!lock) return false;
+    maintainUdp();
+    if (!udpReady) return false;
+    errno = 0;
     int n = udp.parsePacket();
-    if (!n)
+    const int socketError = errno;
+    if (!n) {
+      // parsePacket retorna zero tanto sem dados quanto em erro de socket.
+      if (socketError == EBADF || socketError == ENOTSOCK || socketError == ENETDOWN ||
+          socketError == EINVAL) {
+        metrics.recordUdpReadError();
+        metrics.setUdpListening(false);
+        udpRebindRequested.store(true);
+      }
       return false;
+    }
+    metrics.recordUdpReceive();
     char buf[256];
     if (n >= int(sizeof(buf)))
     {
-      while (udp.available())
-        udp.read(buf, sizeof(buf));
+      udp.clear();
+      metrics.recordUdpReadError();
       responderUDP("Erro: maximo 255 bytes\n");
       return false;
     }
     int len = udp.read(buf, sizeof(buf) - 1);
-    if (len <= 0)
+    if (len != n) {
+      udp.clear();
+      metrics.recordUdpReadError();
       return false;
+    }
     buf[len] = 0;
     s = String(buf);
     return true;

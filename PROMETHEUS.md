@@ -108,7 +108,18 @@ de exposição é Prometheus **0.0.4**.
 | Aplicação | `application_requests_total` | Counter de requisições HTTP concluídas em ambos os servidores. |
 | Aplicação | `application_errors_total` | Counter de requisições HTTP com status 4xx/5xx ou sem código de resposta. |
 | Aplicação | `application_response_time_ms` | Gauge de duração do tratamento da última requisição concluída. |
+| HTTP | `esp_http_rejected_requests_total` | Clientes sem iniciar pedido no prazo ou pedidos rejeitados pelo parser; label `server="portal"` ou `server="metrics"`. |
+| HTTP | `esp_http_aborted_responses_total` | Respostas normais interrompidas por prazo de envio ou erro TCP; mesmos labels. |
 | Adicional | `esp_cpu_temperature_celsius` | Temperatura interna da CPU quando válida; não é temperatura ambiente. |
+| OLED | `esp_oled_events_dropped_total` | Eventos de tela descartados por fila cheia, acumulados na RAM desde o boot. |
+| UDP | `esp_udp_listener_up` | 1 após abertura local bem-sucedida da porta 4210; 0 em falha/recuperação. Não comprova entrega pela rede. |
+| UDP | `esp_udp_packets_received_total` | Datagramas recebidos, incluindo comandos rejeitados por tamanho. |
+| UDP | `esp_udp_replies_sent_total` | Respostas aceitas para envio pela pilha UDP; não confirma recebimento pelo cliente. |
+| UDP | `esp_udp_receive_errors_total` | Erros detectados no socket de leitura, leituras incompletas ou datagramas acima do limite. |
+| UDP | `esp_udp_send_errors_total` | Falhas ao preparar/enviar uma resposta UDP. |
+| UDP | `esp_udp_bind_errors_total` | Tentativas malsucedidas de abrir a porta UDP. |
+| UDP | `esp_udp_rebinds_total` | Reaberturas bem-sucedidas após a primeira abertura. |
+| UDP | `esp_udp_last_receive_uptime_seconds` | Uptime no recebimento do último datagrama; omitida antes do primeiro pacote. |
 | Clima Porto Alegre | `sensor_temperature_celsius` | Temperatura do ar a 2 m do Open-Meteo, em °C; labels `source="open_meteo"` e `location="porto_alegre"`. |
 | Clima Porto Alegre | `sensor_humidity_percent` | Umidade relativa do ar a 2 m do Open-Meteo, em %; mesmos labels. |
 | Clima Porto Alegre | `esp_weather_up` | 1 se a última consulta foi válida, o cache está recente e o Wi-Fi conectado; 0 caso contrário. |
@@ -198,6 +209,79 @@ O projeto consulta o Open-Meteo para Porto Alegre; não usa MQTT.
 
 ## Diagnóstico
 
+### Watchdog com rastro de atendimento HTTP
+
+O portal e o servidor de métricas usam `BoundedWebServer`, uma adaptação local
+que mantém o parser, as rotas e os middlewares do WebServer do core instalado.
+Clientes sem dados iniciais são encerrados após 1,5 segundo sem bloquear o ciclo
+enquanto aguardam. A inatividade de leitura é configurada em 250 ms, em vez de
+cinco segundos. Cabeçalhos e formulários fragmentados continuam sendo lidos pelo
+parser original; os limites internos de fase/corpo desse parser continuam valendo.
+Esses prazos não constituem um limite absoluto para todo o tratamento HTTP.
+
+As respostas normais dos handlers String usam envio TCP não bloqueante em blocos
+de até 1024 bytes, com pausa entre tentativas e prazo compartilhado de um segundo
+para cabeçalho e corpo. Se o cliente não acompanha, a conexão é encerrada e o
+próximo scrape pode tentar novamente. Essa adaptação é para as rotas atuais;
+não oferece streaming, SSE ou garantia de prazo para handlers adicionais ou
+para respostas de erro enviadas internamente pelo parser do core.
+
+`esp_http_rejected_requests_total` e `esp_http_aborted_responses_total` permitem
+acompanhar essas interrupções, separadas por `server="portal"` e `server="metrics"`.
+Os valores ficam na RAM e são amostrados quando `/metrics` monta sua resposta;
+uma falha durante o envio do próprio scrape aparece na próxima coleta válida.
+
+O rastro RTC diferencia agora portal HTTP, servidor HTTP de métricas, montagem
+das métricas, envio HTTP das métricas e manutenção de Wi-Fi/NVS. A última etapa
+continua sendo uma pista: não substitui o backtrace nem identifica sozinha qual
+tarefa provocou o watchdog.
+
+### Prometheus funciona, mas os comandos UDP não respondem
+
+Pedidos ao OLED agora usam uma fila estática de 24 eventos, sem esperar por
+mutex da tela. Apenas o loop dos periféricos altera textos, páginas e framebuffer.
+Se a fila encher, o evento novo é descartado e `esp_oled_events_dropped_total`
+aumenta, sem prender a tarefa de rede. Um comando de tela pode ter sua atualização
+visual descartada nessa condição; os demais comandos continuam sendo executados.
+Esse contador não mede erros de I2C. O timeout I2C é de 25 ms por transação,
+não um limite total de duração de um quadro inteiro.
+
+Neste projeto a conexão é Wi-Fi. O Prometheus coleta por HTTP/TCP na porta
+configurada (padrão 9120), enquanto comandos usam UDP 4210. Um scrape atual
+não confirma que o trajeto UDP entre o computador e o ESP32 está funcionando.
+Confirme que `esp_uptime_seconds` aumenta e que `up` está em 1, para não confundir
+dados antigos do dashboard com coleta atual.
+
+O firmware verifica a abertura do UDP e repete tentativas malsucedidas a cada
+cinco segundos. Eventos de reconexão, mudança de IP e início/fim do AP solicitam
+reabertura na tarefa de rede. Erros de socket detectados e falhas no envio também
+solicitam recuperação. Ausência de pacotes, sozinha, não dispara reaberturas.
+Os callbacks de Wi-Fi apenas sinalizam a recuperação; não operam o socket.
+
+Após atualizar o firmware, acompanhe estas métricas enquanto envia `alive`
+para o IP atual da placa, na porta **UDP 4210**:
+
+```promql
+esp_udp_listener_up{port="4210"}
+esp_udp_packets_received_total{port="4210"}
+esp_udp_replies_sent_total{port="4210"}
+esp_udp_send_errors_total{port="4210"}
+esp_udp_bind_errors_total{port="4210"}
+```
+
+- Pacotes recebidos sem aumento: confirme IP, UDP em vez de TCP, porta 4210,
+  firewall, isolamento de clientes Wi-Fi e o caminho entre computador e placa.
+- Pacotes aumentam e respostas também: a placa recebeu e a pilha aceitou a
+  resposta. Confira se o cliente escuta a mesma porta de origem usada no envio.
+- Erros de envio ou abertura aumentam: a recuperação local está sendo tentada;
+  consulte também heap, desconexões e contadores de reboot/watchdog.
+- `esp_udp_listener_up=1` indica apenas abertura local. Não é um teste de
+  conectividade ponta a ponta nem prova que todo erro silencioso foi detectado.
+
+Todas as métricas UDP têm labels `device` e `port="4210"`. Os contadores ficam
+na RAM e reiniciam com a placa; `reset_counters` continua limitado aos contadores
+de boot/watchdog da NVS.
+
 Exemplo no PowerShell:
 
 ```powershell
@@ -236,6 +320,19 @@ A compilação não comprova operação em hardware. Após gravar, verifique:
    os labels `instance`/`job` no Prometheus, e não apenas no texto de `/metrics`.
 9. Interromper a Internet e verificar idade crescente, estado de coleta 0 e
    omissão de temperatura/umidade após uma hora, sem bloquear OLED, UDP ou OTA.
+10. Enviar `alive` por UDP 4210 e conferir resposta e aumento de recebimentos/envios.
+    Desconectar/reconectar o Wi-Fi, conferir reabertura e repetir no IP atual.
+    Datagramas acima de 255 bytes devem ser rejeitados sem impedir o próximo comando.
+11. Sem tocar no botão, enviar `alive` e `crash_info` durante a rotação das cinco
+    páginas e durante a proteção de tela. Verificar respostas, uptime crescente
+    e `esp_oled_events_dropped_total`. Em novo watchdog sem cortar alimentação,
+    consultar o rastro RTC no próximo boot.
+12. Abrir um cliente TCP que não envie o pedido e verificar encerramento após
+    aproximadamente 1,5 s. Testar pedido HTTP fragmentado, formulários de Wi-Fi,
+    Prometheus e terminal, além de scrapes repetidos. Durante os testes, enviar
+    `alive` por UDP e acompanhar uptime, watchdogs e os dois contadores HTTP.
+13. Testar um cliente que para de ler a resposta: o envio normal deve ser
+    interrompido pelo prazo de um segundo, sem aumentar/desativar o watchdog.
 
 Referências:
 [modelo de coleta Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/),

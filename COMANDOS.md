@@ -7,6 +7,15 @@ Envie por **UDP 4210** ao IP STA ou ao IP AP **192.168.4.1**. Limite de entrada:
 **255 bytes**. Os nomes são normalizados para minúsculas; os argumentos preservam
 caixa e espaços. Comandos que alteram dados executam diretamente no dispositivo.
 
+A abertura da porta UDP é verificada e repetida em falha a cada cinco segundos.
+Mudanças da conexão Wi-Fi/AP e erros detectados de socket solicitam reabertura.
+O firmware atende um comando UDP antes do HTTP/OTA a cada ciclo da tarefa de rede.
+Isso não impede que um atendimento HTTP em andamento atrase o ciclo seguinte.
+Se o Prometheus coleta mas o UDP não responde, consulte as métricas `esp_udp_*`
+e o diagnóstico em [PROMETHEUS.md](PROMETHEUS.md). Receber HTTP não comprova UDP.
+`help` retorna `COMANDOS` e um comando por linha; argumentos aparecem após `:`,
+sem descrições misturadas à lista.
+
 ## Prometheus e interface web
 
 As métricas climáticas de Porto Alegre são coletadas automaticamente do Open-Meteo,
@@ -197,10 +206,22 @@ maior bloco livre do heap.
 
 Um rastro em memória RTC registra a última etapa observada da tarefa de rede,
 o uptime nessa etapa e o último nome de comando, sem argumentos ou senhas.
+Desde a revisão de 2026-10-20, o registro usa `RTC_NOINIT_ATTR`, para preservar
+o conteúdo entre reinicializações sem a reinicialização da seção de dados RTC.
+As etapas distinguem monitor/ping, métricas/CPU e atendimento HTTP.
+Desde 2026-10-21, o rastro HTTP distingue portal, servidor de métricas, montagem
+da exposição, envio da resposta e manutenção de Wi-Fi/NVS.
 Após panic/watchdog, `crash_info` exibe esse rastro quando disponível. Ele só
 passa a ser coletado após instalar esta revisão e não recupera falhas antigas.
 O rastro pode se perder ao cortar a alimentação e não identifica sozinho a
 causa do travamento nem a tarefa culpada. Não é um histórico de falhas.
+
+Comandos não esperam pela renderização do OLED: interações, logs e seleção de
+página são enfileirados com tempo de espera zero e aplicados pelo loop da tela.
+A fila comporta 24 eventos e cada texto transporta até 32 caracteres (o OLED
+continua mostrando até 21 por linha). Se houver saturação, a atualização visual
+nova pode ser descartada; o contador `esp_oled_events_dropped_total` informa isso.
+O retorno do comando não significa que a atualização visual já foi desenhada.
 
 O firmware não armazena backtrace nem registradores;
 um novo reset substitui a causa anterior. Para investigar a exceção, capture a

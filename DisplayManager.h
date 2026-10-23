@@ -6,11 +6,25 @@
 #include "Config.h"
 #include "NTPUtil.h"
 #include "NetworkMonitor.h"
-#include "StateLock.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <atomic>
 class DisplayManager
 {
     Adafruit_SSD1306 display;
-    SemaphoreHandle_t stateMutex = nullptr;
+    enum class Action : uint8_t { Log, Wake, Select, Next, Auto, Clear, Connecting, Monitor };
+    struct Event {
+        Action action;
+        uint8_t selected = 0;
+        const NetworkMonitor *source = nullptr;
+        char text[33]{};
+    };
+    static constexpr uint8_t EVENT_COUNT = 24;
+    StaticQueue_t eventQueueStorage;
+    uint8_t eventStorage[EVENT_COUNT * sizeof(Event)];
+    QueueHandle_t events = nullptr;
+    std::atomic<uint32_t> droppedEvents{0};
+    std::atomic<uint8_t> observedPage{0};
     String lines[6], trying;
     uint8_t count = 0, page = 0;
     bool ready = false, automatic = true;
@@ -22,6 +36,62 @@ class DisplayManager
         display.print(text.substring(0, 21));
     }
     uint32_t ultimaInteracao = 0;
+
+    void post(Event event)
+    {
+        // Produtores nunca esperam pelo OLED, pelo I2C nem por espaco na fila.
+        if (!events || xQueueSend(events, &event, 0) != pdTRUE) ++droppedEvents;
+    }
+    void post(Action action, uint8_t selected = 0)
+    {
+        Event event{};
+        event.action = action;
+        event.selected = selected;
+        post(event);
+    }
+    void wake(uint32_t now)
+    {
+        ultimaInteracao = pageAt = now;
+        consoleUntil = 0;
+        rendered = now - 1000;
+    }
+    void processEvents()
+    {
+        Event event;
+        // Limite por ciclo impede que uma rajada de logs monopolize o loop.
+        for (uint8_t i = 0; i < EVENT_COUNT && events && xQueueReceive(events, &event, 0) == pdTRUE; ++i) {
+            const uint32_t now = millis();
+            switch (event.action) {
+            case Action::Wake: wake(now); break;
+            case Action::Select:
+            case Action::Next:
+                wake(now);
+                page = event.action == Action::Next ? (page + 1) % Config::PAGE_COUNT
+                                                    : event.selected % Config::PAGE_COUNT;
+                automatic = false;
+                break;
+            case Action::Auto: wake(now); automatic = true; break;
+            case Action::Clear:
+                wake(now);
+                for (auto &s : lines) s = "";
+                count = 0;
+                consoleUntil = now + 5000;
+                break;
+            case Action::Connecting: trying = event.text; break;
+            case Action::Monitor: monitor = event.source; break;
+            case Action::Log:
+                Serial.println("[OLED] " + String(event.text));
+                if (count == 6) {
+                    for (uint8_t j = 0; j < 5; ++j) lines[j] = lines[j + 1];
+                    lines[5] = event.text;
+                } else lines[count++] = event.text;
+                consoleUntil = now + 5000;
+                rendered = now - 1000;
+                break;
+            }
+            observedPage.store(page);
+        }
+    }
 
     void desenharCoracao(int x, int y)
     {
@@ -93,12 +163,13 @@ public:
     DisplayManager() : display(Config::SCREEN_WIDTH, Config::SCREEN_HEIGHT, &Wire, -1) {}
     void begin()
     {
-        stateMutex = xSemaphoreCreateRecursiveMutex();
-        if (!stateMutex) {
-            Serial.println("[OLED] Falha ao criar mutex");
+        events = xQueueCreateStatic(EVENT_COUNT, sizeof(Event), eventStorage, &eventQueueStorage);
+        if (!events) {
+            Serial.println("[OLED] Falha ao criar fila");
             return;
         }
         Wire.begin(Config::PIN_SDA, Config::PIN_SCL);
+        Wire.setTimeOut(25);
         ready = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
         if (ready)
         {
@@ -110,78 +181,54 @@ public:
         registrarInteracao();
     }
     bool isPronto() const { return ready; }
+    uint32_t eventosDescartados() const { return droppedEvents.load(); }
     void setMonitor(const NetworkMonitor *m) {
-        StateLock lock(stateMutex); if (!lock) return;
-        monitor = m;
+        Event event{};
+        event.action = Action::Monitor;
+        event.source = m;
+        post(event);
     }
     void setConnecting(const String &ssid) {
-        StateLock lock(stateMutex); if (!lock) return;
-        trying = ssid;
+        Event event{};
+        event.action = Action::Connecting;
+        ssid.toCharArray(event.text, sizeof(event.text));
+        post(event);
     }
     void selecionarPagina(uint8_t p)
     {
-        StateLock lock(stateMutex); if (!lock) return;
-        registrarInteracao();
-        page = p % Config::PAGE_COUNT;
-        automatic = false;
-        consoleUntil = 0;
-        rendered = millis() - 1000;
+        post(Action::Select, p);
     }
     void avancarPagina() {
-        StateLock lock(stateMutex); if (!lock) return;
-        selecionarPagina((page + 1) % Config::PAGE_COUNT);
+        post(Action::Next);
     }
     void paginasAutomaticas()
     {
-        StateLock lock(stateMutex); if (!lock) return;
-        registrarInteracao();
-        automatic = true;
-        pageAt = millis();
-        consoleUntil = 0;
-        rendered = millis() - 1000;
+        post(Action::Auto);
     }
     void setModoRelogioGrande(bool on) { selecionarPagina(on ? 0 : 1); }
     bool getModoRelogioGrande() const {
-        StateLock lock(stateMutex); return lock && page == 0;
+        return observedPage.load() == 0;
     }
     void clearLog()
     {
-        StateLock lock(stateMutex); if (!lock) return;
-        registrarInteracao();
-        for (auto &s : lines)
-            s = "";
-        count = 0;
-        consoleUntil = millis() + 5000;
-        rendered = millis() - 1000;
+        post(Action::Clear);
     }
     void adicionarLinha(const String &text)
     {
-        StateLock lock(stateMutex); if (!lock) return;
-        Serial.println("[OLED] " + text);
-        if (count == 6)
-        {
-            for (int i = 0; i < 5; i++)
-                lines[i] = lines[i + 1];
-            lines[5] = text;
-        }
-        else
-            lines[count++] = text;
-        consoleUntil = millis() + 5000;
-        rendered = millis() - 1000;
+        Event event{};
+        event.action = Action::Log;
+        text.toCharArray(event.text, sizeof(event.text));
+        post(event);
     }
 
     void registrarInteracao() {
-        StateLock lock(stateMutex); if (!lock) return;
-        ultimaInteracao = millis();
-        pageAt = ultimaInteracao;
-        consoleUntil = 0;
-        rendered = ultimaInteracao - 1000;
+        post(Action::Wake);
     }
 
 void atualizarTela(NTPUtil& ntpService) {
+    // Apenas esta tarefa altera Strings, paginas e o framebuffer do display.
+    processEvents();
     if (!ready) return;
-    // Se a rede estiver alterando o estado, tenta novamente no proximo loop.
-    StateLock lock(stateMutex, 0); if (!lock) return;
     uint32_t now = millis();
     const uint32_t idle = now - ultimaInteracao;
     const bool protecao = idle >= Config::OLED_TIMEOUT_MS;
@@ -208,6 +255,7 @@ void atualizarTela(NTPUtil& ntpService) {
     } else {
         if (automatic && now - pageAt >= Config::PAGE_INTERVAL_MS) {
             page = (page + 1) % Config::PAGE_COUNT;
+            observedPage.store(page);
             pageAt = now;
         }
         

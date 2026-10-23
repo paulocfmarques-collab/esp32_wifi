@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-10-21 — Esperas HTTP e detalhamento do rastro
+
+- Servidores do portal e das métricas usam adaptação local do WebServer: espera
+  inicial de 1,5 s e inatividade de leitura de 250 ms. Parser e middlewares do
+  core preservados, incluindo leitura de cabeçalhos/formulários fragmentados.
+- Respostas normais dos handlers String enviadas por TCP não bloqueante,
+  em blocos de até 1024 bytes e com pausa entre tentativas. Prazo compartilhado
+  de um segundo para enviar cabeçalho e corpo; conexão encerrada em falha.
+- Contadores HTTP de rejeição e respostas interrompidas por servidor, em RAM.
+- Rastro RTC distingue portal, servidor de métricas, montagem, envio e manutenção
+  de Wi-Fi/NVS, mantendo o significado dos códigos de etapa anteriores.
+- Alterações motivadas por watchdogs repetidos com última etapa HTTP, sem comando
+  anterior registrado. O rastro é indicativo, não comprovação da causa.
+- Limites e testes na placa documentados. Sem compilação ou gravação, conforme
+  preferência do usuário; comportamento real ainda precisa ser validado.
+
+## 2026-10-21 — Formato parseável do help
+
+- Padronizada a saída de `help` com o cabeçalho `COMANDOS` e um comando por
+  linha, com a sintaxe dos argumentos após `:`.
+- Atualizado o guia de comandos.
+
+## 2026-10-20 — UDP independente da renderização OLED
+
+- Substituído o mutex compartilhado do OLED por uma fila estática de 24 eventos.
+  Produtores usam espera zero; apenas o loop de periféricos altera textos,
+  páginas e framebuffer. Isso remove a espera da tarefa de rede pelo desenho.
+- Textos de eventos limitados a 32 caracteres, com o limite visual de 21 por linha
+  preservado. Consumo da fila limitado por ciclo; eventos novos podem ser descartados
+  na saturação, contabilizados em `esp_oled_events_dropped_total` (RAM).
+- Timeout I2C de 25 ms por transação. A proteção e a navegação continuam disponíveis.
+- Corrigida a seção do rastro para `RTC_NOINIT_ATTR`; a seção anterior só garantia
+  retenção no ciclo de deep sleep. A marca de etapa é volátil e diferencia agora
+  monitor/ping, métricas/CPU e HTTP, para auxiliar a investigação de novos resets.
+- Alterações motivadas pelo relato de UDP voltando após tocar no botão. A causa
+  de todos os watchdogs ainda depende de validação em hardware.
+- Documentação atualizada. Sem compilação ou gravação, por preferência do usuário.
+
+## 2026-10-19 — Recuperação e diagnóstico do UDP
+
+- Abertura da porta UDP 4210 verificada, com repetição após cinco segundos em falha.
+- Reabertura solicitada por eventos de Wi-Fi/AP e erros detectados de socket/envio.
+  Eventos apenas sinalizam a ação; a tarefa de rede executa a recuperação.
+- Socket protegido por mutex de tarefa; retornos de `beginPacket`, escrita e
+  `endPacket` verificados. Datagramas rejeitados são descartados sem loop de leitura.
+- Atendimento de um comando UDP antes do HTTP/OTA a cada ciclo, mantendo os demais serviços.
+- Métricas de abertura, recebimento, envio, erros, reaberturas e uptime do último pacote.
+  Contadores UDP ficam na RAM; os de boot/watchdog na NVS não são alterados.
+- Documentado o diagnóstico de HTTP ativo com UDP sem resposta. Causa do problema
+  relatado ainda não confirmada em hardware. Sem compilação ou gravação.
+
 ## 2026-10-19 — Clima de Porto Alegre no Prometheus
 
 - Adicionada consulta HTTPS ao Open-Meteo em tarefa separada, com cache sincronizado,

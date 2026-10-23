@@ -7,7 +7,7 @@
 #include "NTPUtil.h"
 #include "CrashTrace.h"
 
-RTC_DATA_ATTR CrashBreadcrumb crashBreadcrumb;
+RTC_NOINIT_ATTR CrashBreadcrumb crashBreadcrumb;
 
 void injetarComandoDoWebTerminal(const String& cmd)
 {
@@ -82,17 +82,18 @@ void TaskRede(void* pvParameters)
     // Loop infinito interno do Core 0
     for (;;)
     {
-        CrashTrace::mark(CrashTrace::WebMetrics);
-        network.processarWebServer();
-        CrashTrace::mark(CrashTrace::OTA);
-        ArduinoOTA.handle();
-
+        // Atende um comando antes de HTTP/OTA, sem monopolizar o ciclo em rajadas.
         CrashTrace::mark(CrashTrace::UDP);
         String command;
         if (network.checarMensagensUDP(command))
         {
             CommandHandler::executar(command);
         }
+
+        CrashTrace::mark(CrashTrace::WebMetrics);
+        network.processarWebServer();
+        CrashTrace::mark(CrashTrace::OTA);
+        ArduinoOTA.handle();
 
         // Pequeno delay para impedir que a Task trave o Watchdog do Core 0
         CrashTrace::mark(CrashTrace::Idle);

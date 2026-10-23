@@ -11,6 +11,7 @@
 #include <atomic>
 #include "Config.h"
 #include "WeatherService.h"
+#include "DisplayManager.h"
 
 class MetricsService
 {
@@ -34,7 +35,11 @@ private:
   String device;
   uint32_t imageBytes = 0, partitionBytes = 0;
   std::atomic<uint32_t> disconnects{0};
+  std::atomic<bool> udpListening{false};
+  std::atomic<uint32_t> udpReceived{0}, udpSent{0}, udpReadErrors{0}, udpSendErrors{0};
+  std::atomic<uint32_t> udpBindErrors{0}, udpRebinds{0}, udpLastReceiveSeconds{0};
   uint64_t requests = 0, errors = 0;
+  uint32_t httpRejected[2]{}, httpAborted[2]{};
   double responseMs = 0;
   float cpuUsage = NAN;
 #if configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS
@@ -112,6 +117,23 @@ public:
   }
   const Settings &configuration() const { return settings; }
   bool persistenceOk() const { return countersOk; }
+  void recordHttpLimits(uint32_t webRejected, uint32_t webAborted,
+                        uint32_t metricsRejected, uint32_t metricsAborted) {
+    httpRejected[0] = webRejected; httpAborted[0] = webAborted;
+    httpRejected[1] = metricsRejected; httpAborted[1] = metricsAborted;
+  }
+  void setUdpListening(bool ready) { udpListening.store(ready); }
+  void recordUdpBind(bool ok, bool rebind) {
+    udpListening.store(ok);
+    if (!ok) ++udpBindErrors;
+    else if (rebind) ++udpRebinds;
+  }
+  void recordUdpReceive() {
+    ++udpReceived;
+    udpLastReceiveSeconds.store(uint32_t(esp_timer_get_time() / 1000000));
+  }
+  void recordUdpReadError() { ++udpReadErrors; }
+  void recordUdpSend(bool ok) { if (ok) ++udpSent; else ++udpSendErrors; }
   bool resetCounters()
   {
     Preferences prefs;
@@ -286,6 +308,17 @@ public:
         sample(out, "esp_wifi_tx_power", "gauge", String(power / 4.0f, 2));
     }
     sample(out, "esp_wifi_disconnect_count", "gauge", String(disconnects.load()));
+    sample(out, "esp_oled_events_dropped_total", "counter", String(oled.eventosDescartados()));
+    const String udpLabels = label("port", String(Config::UDP_PORT));
+    sample(out, "esp_udp_listener_up", "gauge", udpListening.load() ? "1" : "0", udpLabels);
+    sample(out, "esp_udp_packets_received_total", "counter", String(udpReceived.load()), udpLabels);
+    sample(out, "esp_udp_replies_sent_total", "counter", String(udpSent.load()), udpLabels);
+    sample(out, "esp_udp_receive_errors_total", "counter", String(udpReadErrors.load()), udpLabels);
+    sample(out, "esp_udp_send_errors_total", "counter", String(udpSendErrors.load()), udpLabels);
+    sample(out, "esp_udp_bind_errors_total", "counter", String(udpBindErrors.load()), udpLabels);
+    sample(out, "esp_udp_rebinds_total", "counter", String(udpRebinds.load()), udpLabels);
+    if (udpReceived.load())
+      sample(out, "esp_udp_last_receive_uptime_seconds", "gauge", String(udpLastReceiveSeconds.load()), udpLabels);
     sample(out, "esp_cpu_frequency_mhz", "gauge", String(ESP.getCpuFreqMHz()));
     if (isfinite(cpuUsage))
       sample(out, "esp_cpu_usage_percent", "gauge", String(cpuUsage, 3));
@@ -322,6 +355,17 @@ public:
     sample(out, "application_requests_total", "counter", String(requests));
     sample(out, "application_errors_total", "counter", String(errors));
     sample(out, "application_response_time_ms", "gauge", String(responseMs, 3));
+    // Uma declaracao HELP/TYPE por familia, com amostras para os dois servidores.
+    out += "# HELP esp_http_rejected_requests_total Requests rejected on initial timeout or parser failure.\n"
+           "# TYPE esp_http_rejected_requests_total counter\n";
+    for (int i = 0; i < 2; ++i)
+      out += "esp_http_rejected_requests_total{device=\"" + escaped(device) +
+             "\",server=\"" + String(i == 0 ? "portal" : "metrics") + "\"} " + String(httpRejected[i]) + "\n";
+    out += "# HELP esp_http_aborted_responses_total Responses aborted on timeout or send failure.\n"
+           "# TYPE esp_http_aborted_responses_total counter\n";
+    for (int i = 0; i < 2; ++i)
+      out += "esp_http_aborted_responses_total{device=\"" + escaped(device) +
+             "\",server=\"" + String(i == 0 ? "portal" : "metrics") + "\"} " + String(httpAborted[i]) + "\n";
     return out;
   }
   String scrapeConfiguration() const
