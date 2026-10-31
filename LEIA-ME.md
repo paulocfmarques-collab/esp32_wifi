@@ -125,6 +125,9 @@ Após três minutos sem interação, uma carinha sem moldura ocupa o OLED inteir
 com olhos e boca ampliados. São dez expressões: sorriso, piscadinha, tristeza,
 bravo, neutro, olhos de coração, surpresa, sono, alegria e preocupação.
 A expressão muda a cada quatro segundos, com piscadas e movimento dos olhos.
+Os olhos abertos têm íris circular com traços radiais animados, pupila escura,
+reflexo e um ponto de varredura na borda, inspirados na referência de olho digital.
+O desenho é monocromático; piscadas, olhos fechados e corações mantêm suas formas.
 O rosto se desloca levemente dentro dos 128×64 pixels, com atualização a cada
 100 ms e o display sempre ligado. A animação funciona mesmo sem horário NTP.
 

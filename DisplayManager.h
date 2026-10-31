@@ -108,7 +108,35 @@ class DisplayManager
         display.drawLine(x + largura / 2, y, x + largura, y + ponta, SSD1306_WHITE);
     }
 
-    void desenharCarinha(int x, int y, uint8_t expressao, bool piscar, int olhar)
+    void desenharOlhoDigital(int x, int y, uint8_t fase, int olhar)
+    {
+        // Direcoes da iris a cada 15 graus, sem trigonometria ou bitmaps na RAM.
+        static const int8_t directions[24][2] = {
+            {32, 0}, {31, 8}, {28, 16}, {23, 23}, {16, 28}, {8, 31},
+            {0, 32}, {-8, 31}, {-16, 28}, {-23, 23}, {-28, 16}, {-31, 8},
+            {-32, 0}, {-31, -8}, {-28, -16}, {-23, -23}, {-16, -28}, {-8, -31},
+            {0, -32}, {8, -31}, {16, -28}, {23, -23}, {28, -16}, {31, -8}
+        };
+        display.drawCircle(x, y, 15, SSD1306_WHITE);
+        display.drawCircle(x, y, 11, SSD1306_WHITE);
+        for (uint8_t i = 0; i < 24; ++i) {
+            const int inner = 7 + (i + fase) % 3;
+            const int outer = 13 + (i + fase) % 2;
+            display.drawLine(x + directions[i][0] * inner / 32,
+                             y + directions[i][1] * inner / 32,
+                             x + directions[i][0] * outer / 32,
+                             y + directions[i][1] * outer / 32, SSD1306_WHITE);
+        }
+        // Ponto de varredura percorrendo a borda e pupila com pequeno reflexo.
+        const uint8_t scan = fase % 24;
+        display.fillCircle(x + directions[scan][0] * 13 / 32,
+                           y + directions[scan][1] * 13 / 32, 1, SSD1306_WHITE);
+        const int pupilX = x + olhar / 2;
+        display.fillCircle(pupilX, y, 6, SSD1306_BLACK);
+        display.fillCircle(pupilX - 2, y - 3, 1, SSD1306_WHITE);
+    }
+
+    void desenharCarinha(int x, int y, uint8_t expressao, bool piscar, int olhar, uint8_t fase)
     {
         // Olhos e boca ampliados para ocupar a tela inteira, sem moldura.
         const int eyeY = y - 10;
@@ -121,7 +149,7 @@ class DisplayManager
             } else if (expressao == 8) {
                 desenharCurva(eyeX, eyeY - 3, false, 14);
             } else {
-                display.fillRoundRect(eyeX - 9, eyeY - 11, 19, 24, 8, SSD1306_WHITE);
+                desenharOlhoDigital(eyeX, eyeY, (fase + i * 12) % 24, olhar);
                 if (expressao == 3) {
                     // Sobrancelhas inclinadas para dentro: bravo.
                     display.drawLine(eyeX - 14, eyeY - (i == 0 ? 18 : 12),
@@ -156,7 +184,7 @@ class DisplayManager
         const int olhar = 2 * (int((frame / 12) % 5) - 2);
         // Ordem das dez expressoes da imagem, com piscada na troca de cara.
         const bool piscar = elapsed % 4000 < 200 || frame % 31 == 0;
-        desenharCarinha(x, y, (elapsed / 4000) % 10, piscar, olhar);
+        desenharCarinha(x, y, (elapsed / 4000) % 10, piscar, olhar, frame % 24);
     }
 
 public:

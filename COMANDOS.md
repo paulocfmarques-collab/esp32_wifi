@@ -122,6 +122,10 @@ Inventário de métricas e limitações em [PROMETHEUS.md](PROMETHEUS.md).
 
 ## OLED
 
+Na proteção automática, os olhos abertos usam íris circular com traços radiais
+animados, pupila escura e reflexo. O estilo adapta a referência de olho digital
+ao OLED monocromático, mantendo piscadas e as dez expressões existentes.
+
 | Comando | Função |
 |---|---|
 | `tela:0` | Relógio e data. |

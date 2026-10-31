@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-25 — Olhos digitais na proteção de tela
+
+- Olhos abertos redesenhados com íris circular de raio 15, anel interno e
+  24 traços radiais, pupila escura e reflexo, inspirados na referência enviada.
+- Variação dos traços e ponto de varredura animados no ritmo já existente de
+  100 ms, com movimento da pupila e fases distintas entre os dois olhos.
+- Preservadas piscadas, olhos fechados, corações, dez expressões e ausência de
+  moldura. Desenho por primitivas, sem bitmaps, esperas ou trigonometria por quadro.
+- Guias atualizados. Sem compilação ou gravação, conforme preferência do usuário.
+
 ## 2026-10-21 — Esperas HTTP e detalhamento do rastro
 
 - Servidores do portal e das métricas usam adaptação local do WebServer: espera
